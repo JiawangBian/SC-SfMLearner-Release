@@ -13,9 +13,9 @@ See the paper on [arXiv](https://arxiv.org/abs/1908.10553) and the [project webp
 
 
 ## Highlighted Features
-  1. A geometry consistency loss for enforcing scale-consistency of depth and pose predictions.
+  1. A geometry consistency loss for enforcing the scale-consistency of predictions between consecutive frames.
   2. A self-discovered mask for detecting moving objects and occlusions.
-  3. Enabling the unsupervised estimator (learned from monocular videos) to show visual odometry results on a long video.
+  3. Enabling the unsupervised estimator (learned from monocular videos) to do visual odometry on a long video.
 
 
 
