@@ -6,8 +6,10 @@ Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video
 
 [Jia-Wang Bian](https://jwbian.net/), Zhichao Li, Naiyan Wang, Huangying Zhan, Chunhua Shen, Ming-Ming Cheng, Ian Reid
 
+**NeurIPS** 2019 
 
-See the paper on [arXiv](https://arxiv.org/abs/1908.10553) and the [project webpage](https://jwbian.net/sc-sfmlearner/) for more details. 
+
+See the paper on [[arXiv](https://arxiv.org/abs/1908.10553)] and the [project webpage](https://jwbian.net/sc-sfmlearner/) for more details. 
 
 <img src="misc/mask.png" alt="drawing" width="480"/>
 
