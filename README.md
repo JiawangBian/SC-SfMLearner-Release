@@ -9,7 +9,7 @@ Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video
 **NeurIPS** 2019 
 
 
-See the paper on [[arXiv](https://arxiv.org/abs/1908.10553)] and the [project webpage](https://jwbian.net/sc-sfmlearner/) for more details. 
+See the paper on [[arXiv](https://arxiv.org/abs/1908.10553)] and the [[project webpage](https://jwbian.net/sc-sfmlearner/)] for more details. 
 
 <img src="misc/mask.png" alt="drawing" width="480"/>
 
@@ -124,5 +124,18 @@ They are not coupled.
 |            |r_err (degree/100m)  | 2.19    | 4.58    | 
 
 <img src="misc/vo.png" alt="drawing" width="450"/>
+
+
+ ## If you use this work, please cite our paper
+ 
+    @inproceedings{bian2019depth,
+      title={Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video},
+      author={Bian, Jia-Wang and Li, Zhichao and Wang, Naiyan and Zhan, Huangying and Shen, Chunhua and Cheng, Ming-Ming and Reid, Ian},
+      booktitle= {Thirty-third Conference on Neural Information Processing Systems (NeurIPS)},
+      year={2019}
+    }
+
+    
+
 
 
