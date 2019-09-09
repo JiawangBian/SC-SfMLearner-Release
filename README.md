@@ -22,8 +22,9 @@ See the paper on [[arXiv](https://arxiv.org/abs/1908.10553)] and the [[project w
 
 
 ## Preamble
-This codebase was developed and tested with Pytorch 1.0.1, CUDA 10.0 and Ubuntu 16.04.
-It is based on [Clement Pinard's implementation](https://github.com/ClementPinard/SfmLearner-Pytorch).
+This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 10.0 on Ubuntu 16.04.
+It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch),
+in which we make little modification and add our proposed losses.
 
 
 
