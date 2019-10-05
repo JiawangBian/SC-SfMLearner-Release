@@ -90,11 +90,13 @@ You can evaluate depth using Eigen's split by running
 ```bash
 sh scripts/run_depth_test.sh
 ```
-and evaluate visual odometry by running
+and test visual odometry by running
 ```bash
 sh scripts/run_vo_test.sh
 ```
-Also, you can evaluate 5-frame pose as SfMLearner by running
+You can evaluate visual odometry results using KITTI provided C++ codes, or you can use the python code at this [repo](https://github.com/Huangying-Zhan/kitti_odom_eval)
+
+Besides, you can evaluate 5-frame pose as SfMLearner by running
 ```bash
 sh scripts/run_pose_test.sh
 ```
