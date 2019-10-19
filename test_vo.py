@@ -1,6 +1,6 @@
 import torch
 from imageio import imread, imsave
-from scipy.misc import imresize
+from PIL import Image
 import numpy as np
 from path import Path
 import argparse
@@ -29,7 +29,7 @@ def load_tensor_image(filename, args):
     img = imread(filename).astype(np.float32)
     h,w,_ = img.shape
     if (not args.no_resize) and (h != args.img_height or w != args.img_width):
-        img = imresize(img, (args.img_height, args.img_width)).astype(np.float32)
+        img = np.array(Image.fromarray(img, mode="RGB").resize((args.img_width, args.img_height)))
     img = np.transpose(img, (2, 0, 1))
     tensor_img = ((torch.from_numpy(img).unsqueeze(0)/255 - 0.5)/0.5).to(device)
     return tensor_img
