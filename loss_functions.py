@@ -41,11 +41,11 @@ def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, with_mas
 
     diff_depth = ((computed_depth - projected_depth).abs() / (computed_depth + projected_depth).abs()).clamp(0,1) * valid_mask
 
-    if with_ssim == True:
+    if with_ssim:
         ssim_map = (0.5*(1-ssim(tgt_img, ref_img_warped))).clamp(0,1) * valid_mask
         diff_img = (0.15 * diff_img + 0.85 * ssim_map) * valid_mask
 
-    if with_mask == True:
+    if with_mask:
         weight_mask = (1 - diff_depth) * valid_mask
         diff_img = diff_img * weight_mask
 

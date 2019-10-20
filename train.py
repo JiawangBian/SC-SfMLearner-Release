@@ -67,9 +67,8 @@ parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the nu
 parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=0.5)
-parser.add_argument('--with-ssim', type=bool, help='with ssim or not', metavar='W', default=True, choices=[True, False])
-parser.add_argument('--with-mask', type=bool, metavar='W', default=True, choices=[True, False],
-                    help='with the the mask for moving objects and occlusions or not')
+parser.add_argument('--with-ssim', action='store_true', help='use ssim loss',)
+parser.add_argument('--with-mask', action='store_true', help='use the the mask for handling moving objects and occlusions')
 parser.add_argument('--name', dest='name', type=str, required=True,
                     help='name of the experiment, checkpoints are stored in checpoints/name')
 
