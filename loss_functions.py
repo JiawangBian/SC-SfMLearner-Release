@@ -103,27 +103,6 @@ def edge_aware_smoothness_loss(pred_disp, img, max_scales):
     return loss
 
 
-def smooth_loss(pred_map):
-    def gradient(pred):
-        D_dy = pred[:, :, 1:] - pred[:, :, :-1]
-        D_dx = pred[:, :, :, 1:] - pred[:, :, :, :-1]
-        return D_dx, D_dy
-
-    if type(pred_map) not in [tuple, list]:
-        pred_map = [pred_map]
-
-    loss = 0
-    weight = 1.
-
-    for scaled_map in pred_map:
-        dx, dy = gradient(scaled_map)
-        dx2, dxdy = gradient(dx)
-        dydx, dy2 = gradient(dy)
-        loss += (dx2.abs().mean() + dxdy.abs().mean() + dydx.abs().mean() + dy2.abs().mean())*weight
-        weight /= 4.0
-    return loss
-
-
 def compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs, max_scales = 1):
     loss = edge_aware_smoothness_loss(tgt_depth, tgt_img, max_scales)
 
@@ -142,7 +121,7 @@ def create_gaussian_window(window_size, channel):
     window = _2D_window.expand(channel, 1, window_size, window_size).contiguous()
     return window
 
-window_size = 11
+window_size = 5
 gaussian_img_kernel = create_gaussian_window(window_size, 3).float().to(device)
 
 

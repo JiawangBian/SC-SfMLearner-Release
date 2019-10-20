@@ -186,9 +186,9 @@ def main():
     if args.pretrained_disp:
         logger.reset_valid_bar()
         if args.with_gt:
-            errors, error_names = validate_with_gt(args, val_loader, disp_net, 0, logger, output_writers)
+            errors, error_names = validate_with_gt(args, val_loader, disp_net, 0, logger)
         else:
-            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, 0, logger, output_writers)
+            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, 0, logger)
         for error, name in zip(errors, error_names):
             training_writer.add_scalar(name, error, 0)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names[2:9], errors[2:9]))
