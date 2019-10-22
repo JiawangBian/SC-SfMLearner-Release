@@ -52,7 +52,7 @@ class RandomHorizontalFlip(object):
             output_intrinsics = np.copy(intrinsics)
             output_images = [np.copy(np.fliplr(im)) for im in images]
             w = output_images[0].shape[1]
-            output_intrinsics[0,2] = w - output_intrinsics[0,2]
+            output_intrinsics[0, 2] = w - output_intrinsics[0, 2]
         else:
             output_images = images
             output_intrinsics = intrinsics
@@ -67,7 +67,7 @@ class RandomScaleCrop(object):
         output_intrinsics = np.copy(intrinsics)
 
         in_h, in_w, _ = images[0].shape
-        x_scaling, y_scaling = np.random.uniform(1,1.15,2)
+        x_scaling, y_scaling = np.random.uniform(1, 1.15, 2)
         scaled_h, scaled_w = int(in_h * y_scaling), int(in_w * x_scaling)
 
         output_intrinsics[0] *= x_scaling
@@ -76,9 +76,10 @@ class RandomScaleCrop(object):
 
         offset_y = np.random.randint(scaled_h - in_h + 1)
         offset_x = np.random.randint(scaled_w - in_w + 1)
-        cropped_images = [im[offset_y:offset_y + in_h, offset_x:offset_x + in_w] for im in scaled_images]
+        cropped_images = [im[offset_y:offset_y + in_h,
+                             offset_x:offset_x + in_w] for im in scaled_images]
 
-        output_intrinsics[0,2] -= offset_x
-        output_intrinsics[1,2] -= offset_y
+        output_intrinsics[0, 2] -= offset_x
+        output_intrinsics[1, 2] -= offset_y
 
         return cropped_images, output_intrinsics

@@ -15,10 +15,11 @@ class TermLogger(object):
         ts = 6  # valid bar position
         value = self.t.height
         h = int(0 if value is None else value)
-        
+
         for i in range(10):
             print('')
-        self.epoch_bar = progressbar.ProgressBar(max_value=n_epochs, fd=Writer(self.t, (0, h-s+e)))
+        self.epoch_bar = progressbar.ProgressBar(
+            max_value=n_epochs, fd=Writer(self.t, (0, h-s+e)))
 
         self.train_writer = Writer(self.t, (0, h-s+tr))
         self.train_bar_writer = Writer(self.t, (0, h-s+tr+1))
@@ -30,10 +31,12 @@ class TermLogger(object):
         self.reset_valid_bar()
 
     def reset_train_bar(self):
-        self.train_bar = progressbar.ProgressBar(max_value=self.train_size, fd=self.train_bar_writer)
+        self.train_bar = progressbar.ProgressBar(
+            max_value=self.train_size, fd=self.train_bar_writer)
 
     def reset_valid_bar(self):
-        self.valid_bar = progressbar.ProgressBar(max_value=self.valid_size, fd=self.valid_bar_writer)
+        self.valid_bar = progressbar.ProgressBar(
+            max_value=self.valid_size, fd=self.valid_bar_writer)
 
 
 class Writer(object):
@@ -79,7 +82,7 @@ class AverageMeter(object):
             val = [val]
         assert(len(val) == self.meters)
         self.count += n
-        for i,v in enumerate(val):
+        for i, v in enumerate(val):
             self.val[i] = v
             self.sum[i] += v * n
             self.avg[i] = self.sum[i] / self.count

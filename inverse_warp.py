@@ -8,19 +8,22 @@ pixel_coords = None
 def set_id_grid(depth):
     global pixel_coords
     b, h, w = depth.size()
-    i_range = torch.arange(0, h).view(1, h, 1).expand(1,h,w).type_as(depth)  # [1, H, W]
-    j_range = torch.arange(0, w).view(1, 1, w).expand(1,h,w).type_as(depth)  # [1, H, W]
-    ones = torch.ones(1,h,w).type_as(depth)
+    i_range = torch.arange(0, h).view(1, h, 1).expand(
+        1, h, w).type_as(depth)  # [1, H, W]
+    j_range = torch.arange(0, w).view(1, 1, w).expand(
+        1, h, w).type_as(depth)  # [1, H, W]
+    ones = torch.ones(1, h, w).type_as(depth)
 
     pixel_coords = torch.stack((j_range, i_range, ones), dim=1)  # [1, 3, H, W]
 
 
 def check_sizes(input, input_name, expected):
     condition = [input.ndimension() == len(expected)]
-    for i,size in enumerate(expected):
+    for i, size in enumerate(expected):
         if size.isdigit():
             condition.append(input.size(i) == int(size))
-    assert(all(condition)), "wrong size for {}, expected {}, got  {}".format(input_name, 'x'.join(expected), list(input.size()))
+    assert(all(condition)), "wrong size for {}, expected {}, got  {}".format(
+        input_name, 'x'.join(expected), list(input.size()))
 
 
 def pixel2cam(depth, intrinsics_inv):
@@ -35,7 +38,8 @@ def pixel2cam(depth, intrinsics_inv):
     b, h, w = depth.size()
     if (pixel_coords is None) or pixel_coords.size(2) < h:
         set_id_grid(depth)
-    current_pixel_coords = pixel_coords[:,:,:h,:w].expand(b,3,h,w).reshape(b, 3, -1)  # [B, 3, H*W]
+    current_pixel_coords = pixel_coords[:, :, :h, :w].expand(
+        b, 3, h, w).reshape(b, 3, -1)  # [B, 3, H*W]
     cam_coords = (intrinsics_inv @ current_pixel_coords).reshape(b, 3, h, w)
     return cam_coords * depth.unsqueeze(1)
 
@@ -62,11 +66,12 @@ def cam2pixel(cam_coords, proj_c2p_rot, proj_c2p_tr, padding_mode):
     Y = pcoords[:, 1]
     Z = pcoords[:, 2].clamp(min=1e-3)
 
-    X_norm = 2*(X / Z)/(w-1) - 1  # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
+    # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
+    X_norm = 2*(X / Z)/(w-1) - 1
     Y_norm = 2*(Y / Z)/(h-1) - 1  # Idem [B, H*W]
 
     pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
-    return pixel_coords.reshape(b,h,w,2)
+    return pixel_coords.reshape(b, h, w, 2)
 
 
 def euler2mat(angle):
@@ -78,7 +83,7 @@ def euler2mat(angle):
         Rotation matrix corresponding to the euler angles -- size = [B, 3, 3]
     """
     B = angle.size(0)
-    x, y, z = angle[:,0], angle[:,1], angle[:,2]
+    x, y, z = angle[:, 0], angle[:, 1], angle[:, 2]
 
     cosz = torch.cos(z)
     sinz = torch.sin(z)
@@ -114,9 +119,10 @@ def quat2mat(quat):
     Returns:
         Rotation matrix corresponding to the quaternion -- size = [B, 3, 3]
     """
-    norm_quat = torch.cat([quat[:,:1].detach()*0 + 1, quat], dim=1)
+    norm_quat = torch.cat([quat[:, :1].detach()*0 + 1, quat], dim=1)
     norm_quat = norm_quat/norm_quat.norm(p=2, dim=1, keepdim=True)
-    w, x, y, z = norm_quat[:,0], norm_quat[:,1], norm_quat[:,2], norm_quat[:,3]
+    w, x, y, z = norm_quat[:, 0], norm_quat[:,
+                                            1], norm_quat[:, 2], norm_quat[:, 3]
 
     B = quat.size(0)
 
@@ -139,7 +145,7 @@ def pose_vec2mat(vec, rotation_mode='euler'):
         A transformation matrix -- [B, 3, 4]
     """
     translation = vec[:, :3].unsqueeze(-1)  # [B, 3, 1]
-    rot = vec[:,3:]
+    rot = vec[:, 3:]
     if rotation_mode == 'euler':
         rot_mat = euler2mat(rot)  # [B, 3, 3]
     elif rotation_mode == 'quat':
@@ -174,9 +180,11 @@ def inverse_warp(img, depth, pose, intrinsics, rotation_mode='euler', padding_mo
     # Get projection matrix for tgt camera frame to source pixel frame
     proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
 
-    rot, tr = proj_cam_to_src_pixel[:,:,:3], proj_cam_to_src_pixel[:,:,-1:]
-    src_pixel_coords = cam2pixel(cam_coords, rot, tr, padding_mode)  # [B,H,W,2]
-    projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=padding_mode)
+    rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
+    src_pixel_coords = cam2pixel(
+        cam_coords, rot, tr, padding_mode)  # [B,H,W,2]
+    projected_img = F.grid_sample(
+        img, src_pixel_coords, padding_mode=padding_mode)
 
     valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
 
@@ -205,11 +213,13 @@ def cam2pixel2(cam_coords, proj_c2p_rot, proj_c2p_tr, padding_mode):
     Y = pcoords[:, 1]
     Z = pcoords[:, 2].clamp(min=1e-3)
 
-    X_norm = 2*(X / Z)/(w-1) - 1  # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
+    # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
+    X_norm = 2*(X / Z)/(w-1) - 1
     Y_norm = 2*(Y / Z)/(h-1) - 1  # Idem [B, H*W]
     if padding_mode == 'zeros':
         X_mask = ((X_norm > 1)+(X_norm < -1)).detach()
-        X_norm[X_mask] = 2  # make sure that no point in warped image is a combinaison of im and gray
+        # make sure that no point in warped image is a combinaison of im and gray
+        X_norm[X_mask] = 2
         Y_mask = ((Y_norm > 1)+(Y_norm < -1)).detach()
         Y_norm[Y_mask] = 2
 
@@ -245,13 +255,16 @@ def inverse_warp2(img, depth, ref_depth, pose, intrinsics, padding_mode='zeros')
     # Get projection matrix for tgt camera frame to source pixel frame
     proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
 
-    rot, tr = proj_cam_to_src_pixel[:,:,:3], proj_cam_to_src_pixel[:,:,-1:]
-    src_pixel_coords, computed_depth = cam2pixel2(cam_coords, rot, tr, padding_mode)  # [B,H,W,2]
-    projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=padding_mode)
+    rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
+    src_pixel_coords, computed_depth = cam2pixel2(
+        cam_coords, rot, tr, padding_mode)  # [B,H,W,2]
+    projected_img = F.grid_sample(
+        img, src_pixel_coords, padding_mode=padding_mode)
 
     valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
     valid_mask = valid_points.unsqueeze(1).float()
 
-    projected_depth = F.grid_sample(ref_depth, src_pixel_coords, padding_mode=padding_mode).clamp(min=1e-3)
-    
+    projected_depth = F.grid_sample(
+        ref_depth, src_pixel_coords, padding_mode=padding_mode).clamp(min=1e-3)
+
     return projected_img, valid_mask, projected_depth, computed_depth
