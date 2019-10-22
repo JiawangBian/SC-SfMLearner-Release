@@ -217,7 +217,7 @@ def cam2pixel2(cam_coords, proj_c2p_rot, proj_c2p_tr, padding_mode):
     return pixel_coords.reshape(b, h, w, 2), Z.reshape(b, 1, h, w)
 
 
-def inverse_warp2(img, depth, ref_depth, pose, intrinsics, rotation_mode='euler', padding_mode='zeros'):
+def inverse_warp2(img, depth, ref_depth, pose, intrinsics, padding_mode='zeros'):
     """
     Inverse warp a source image to the target image plane.
     Args:
@@ -240,7 +240,7 @@ def inverse_warp2(img, depth, ref_depth, pose, intrinsics, rotation_mode='euler'
 
     cam_coords = pixel2cam(depth.squeeze(1), intrinsics.inverse())  # [B,3,H,W]
 
-    pose_mat = pose_vec2mat(pose, rotation_mode)  # [B,3,4]
+    pose_mat = pose_vec2mat(pose)  # [B,3,4]
 
     # Get projection matrix for tgt camera frame to source pixel frame
     proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]

@@ -12,7 +12,6 @@ parser = argparse.ArgumentParser(description='Script for DispNet testing with co
 parser.add_argument("--pretrained-dispnet", required=True, type=str, help="pretrained DispNet path")
 parser.add_argument("--img-height", default=256, type=int, help="Image height")
 parser.add_argument("--img-width", default=832, type=int, help="Image width")
-parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
 parser.add_argument("--min-depth", default=1e-3)
 parser.add_argument("--max-depth", default=80)
 parser.add_argument("--dataset-dir", default='.', type=str, help="Dataset directory")
@@ -26,7 +25,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 def load_tensor_image(filename, args):
     img = imread(filename).astype(np.float32)
     h,w,_ = img.shape
-    if (not args.no_resize) and (h != args.img_height or w != args.img_width):
+    if (h != args.img_height or w != args.img_width):
         img = imresize(img, (args.img_height, args.img_width)).astype(np.float32)
     img = np.transpose(img, (2, 0, 1))
     tensor_img = ((torch.from_numpy(img).unsqueeze(0)/255 - 0.5)/0.5).to(device)

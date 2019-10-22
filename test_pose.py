@@ -13,15 +13,11 @@ parser = argparse.ArgumentParser(description='Script for PoseNet testing with co
 parser.add_argument("pretrained_posenet", type=str, help="pretrained PoseNet path")
 parser.add_argument("--img-height", default=256, type=int, help="Image height")
 parser.add_argument("--img-width", default=832, type=int, help="Image width")
-parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
-parser.add_argument("--min-depth", default=1e-3)
-parser.add_argument("--max-depth", default=80)
 
 parser.add_argument("--dataset-dir", type=str, help="Dataset directory")
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for testing', default=5)
 parser.add_argument("--sequences", default=['09'], type=str, nargs='*', help="sequences to test")
 parser.add_argument("--output-dir", default=None, type=str, help="Output directory for saving predictions in a big numpy file")
-parser.add_argument("--rotation-mode", default='euler', choices=['euler', 'quat'], type=str)
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -50,7 +46,7 @@ def main():
         imgs = sample['imgs']
 
         h,w,_ = imgs[0].shape
-        if (not args.no_resize) and (h != args.img_height or w != args.img_width):
+        if (h != args.img_height or w != args.img_width):
             imgs = [imresize(img, (args.img_height, args.img_width)).astype(np.float32) for img in imgs]
 
         imgs = [np.transpose(img, (2,0,1)) for img in imgs]

@@ -15,20 +15,19 @@ import cv2
 parser = argparse.ArgumentParser(description='Script for visualizing depth map and masks',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("--pretrained-posenet", required=True, type=str, help="pretrained PoseNet path")
-parser.add_argument("--img-height", default=128, type=int, help="Image height")
-parser.add_argument("--img-width", default=416, type=int, help="Image width")
-parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
+parser.add_argument("--img-height", default=256, type=int, help="Image height")
+parser.add_argument("--img-width", default=832, type=int, help="Image width")
 parser.add_argument("--dataset-dir", type=str, help="Dataset directory")
 parser.add_argument("--output-dir", type=str, help="Output directory for saving predictions in a big 3D numpy file")
 parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
-parser.add_argument("--rotation-mode", default='euler', choices=['euler', 'quat'], type=str)
-parser.add_argument("--sequence", default='09', type=str, help="sequence to test")                  
+parser.add_argument("--sequence", default='09', type=str, help="sequence to test")
+              
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 def load_tensor_image(filename, args):
     img = imread(filename).astype(np.float32)
     h,w,_ = img.shape
-    if (not args.no_resize) and (h != args.img_height or w != args.img_width):
+    if (h != args.img_height or w != args.img_width):
         img = imresize(img, (args.img_height, args.img_width)).astype(np.float32)
     img = np.transpose(img, (2, 0, 1))
     tensor_img = ((torch.from_numpy(img).unsqueeze(0)/255 - 0.5)/0.5).to(device)

@@ -20,57 +20,40 @@ from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser(description='Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video (KITTI and CityScapes)',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('data', metavar='DIR',
-                    help='path to dataset')
-parser.add_argument('--dataset-format', default='sequential', metavar='STR',
-                    help='dataset format, stacked: stacked frames (from original TensorFlow code) \
-                    sequential: sequential folders (easier to convert to with a non KITTI/Cityscape dataset')
+parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
-parser.add_argument('--rotation-mode', type=str, choices=['euler', 'quat'], default='euler',
-                    help='rotation mode for PoseExpnet : euler (yaw,pitch,roll) or quaternion (last 3 coefficients)')
-parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
-                    help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
-                         ' zeros will null gradients outside target image.'
-                         ' border will only null gradients of the coordinate outside (x or y)')
-parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
-                    You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers')
-parser.add_argument('--epochs', default=200, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--epoch-size', default=1000, type=int, metavar='N',
-                    help='manual epoch size (will match dataset size if not set)')
-parser.add_argument('-b', '--batch-size', default=4, type=int,
-                    metavar='N', help='mini-batch size')
-parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float,
-                    metavar='LR', help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                    help='momentum for sgd, alpha parameter for adam')
-parser.add_argument('--beta', default=0.999, type=float, metavar='M',
-                    help='beta parameters for adam')
-parser.add_argument('--weight-decay', '--wd', default=0, type=float,
-                    metavar='W', help='weight decay')
-parser.add_argument('--print-freq', default=10, type=int,
-                    metavar='N', help='print frequency')
-parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH',
-                    help='path to pre-trained dispnet model')
-parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH',
-                    help='path to pre-trained Pose net model')
+parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
+parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--epoch-size', default=1000, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
+parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='mini-batch size')
+parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
+parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum for sgd, alpha parameter for adam')
+parser.add_argument('--beta', default=0.999, type=float, metavar='M', help='beta parameters for adam')
+parser.add_argument('--weight-decay', '--wd', default=0, type=float, metavar='W', help='weight decay')
+parser.add_argument('--print-freq', default=10, type=int, metavar='N', help='print frequency')
+parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
+parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--seed', default=0, type=int, help='seed for random functions, and network initialization')
-parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH',
-                    help='csv where to save per-epoch train and valid stats')
-parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH',
-                    help='csv where to save per-gradient descent train stats')
-parser.add_argument('--dispnet', dest='dispnet', type=str, default='DispNet', choices=['DispNet', 'DispResNet'],
-                    help='depth network architecture.')
+parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH', help='csv where to save per-epoch train and valid stats')
+parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH', help='csv where to save per-gradient descent train stats')
+parser.add_argument('--dispnet', dest='dispnet', type=str, default='DispNet', choices=['DispNet', 'DispResNet'], help='depth network architecture.')
 parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
 parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=0.5)
 parser.add_argument('--with-ssim', action='store_true', help='use ssim loss',)
 parser.add_argument('--with-mask', action='store_true', help='use the the mask for handling moving objects and occlusions')
-parser.add_argument('--name', dest='name', type=str, required=True,
-                    help='name of the experiment, checkpoints are stored in checpoints/name')
+parser.add_argument('--name', dest='name', type=str, required=True, help='name of the experiment, checkpoints are stored in checpoints/name')
+
+parser.add_argument('--dataset-format', default='sequential', metavar='STR',
+                    help='dataset format, stacked: stacked frames (from original TensorFlow code) \
+                    sequential: sequential folders (easier to convert to with a non KITTI/Cityscape dataset')
+parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
+                    help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
+                         ' zeros will null gradients outside target image.'
+                         ' border will only null gradients of the coordinate outside (x or y)')
+parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
+                    You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
 
 best_error = -1
 n_iter = 0
@@ -266,10 +249,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, 
-                                                        args.with_mask, poses, poses_inv, args.num_scales,
-                                                        args.with_ssim, rotation_mode='euler', padding_mode='zeros')
+                                                        poses, poses_inv, args)
 
-        loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs, args.num_scales)
+        loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
 
         loss = w1*loss_1 + w2*loss_2 + w3*loss_3
 
@@ -337,10 +319,9 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger):
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, 
-                                                        args.with_mask, poses, poses_inv, args.num_scales,
-                                                        args.with_ssim, rotation_mode='euler', padding_mode='zeros')
+                                                        poses, poses_inv, args)
 
-        loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs, args.num_scales)
+        loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
 
         loss_1 = loss_1.item()
         loss_2 = loss_2.item()

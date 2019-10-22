@@ -9,12 +9,12 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 
 
 # compute photometric loss (with ssim) and geometry consistency loss
-def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, with_mask, poses, poses_inv, max_scales, with_ssim=True, rotation_mode='euler', padding_mode='zeros'):
+def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv, args):
 
     photo_loss = 0
     geometry_loss = 0
 
-    num_scales = min(len(tgt_depth), max_scales)
+    num_scales = min(len(tgt_depth), args.num_scales)
     for ref_img, ref_depth, pose, pose_inv in zip(ref_imgs, ref_depths, poses, poses_inv):
         for s in range(num_scales):
             b, _, h, w = tgt_depth[s].size()
@@ -24,29 +24,29 @@ def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, re
             ref_img_scaled = F.interpolate(ref_img, (h, w), mode='area')
             intrinsic_scaled = torch.cat((intrinsics[:, 0:2]/downscale, intrinsics[:, 2:]), dim=1)
 
-            photo_loss1, geometry_loss1 = compute_pairwise_loss(tgt_img_scaled, ref_img_scaled, tgt_depth[s], ref_depth[s], pose, with_mask, intrinsic_scaled, with_ssim)
-            photo_loss2, geometry_loss2 = compute_pairwise_loss(ref_img_scaled, tgt_img_scaled, ref_depth[s], tgt_depth[s], pose_inv, with_mask, intrinsic_scaled, with_ssim)
+            photo_loss1, geometry_loss1 = compute_pairwise_loss(tgt_img_scaled, ref_img_scaled, tgt_depth[s], ref_depth[s], pose, intrinsic_scaled, args)
+            photo_loss2, geometry_loss2 = compute_pairwise_loss(ref_img_scaled, tgt_img_scaled, ref_depth[s], tgt_depth[s], pose_inv, intrinsic_scaled, args)
             
             photo_loss += (photo_loss1 + photo_loss2)
             geometry_loss += (geometry_loss1 + geometry_loss2)
 
     return photo_loss, geometry_loss
 
-def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, with_mask, intrinsic, with_ssim, rotation_mode='euler', padding_mode='zeros'):
+def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsic, args):
     
     ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp2(ref_img, tgt_depth, ref_depth, 
-                                                                pose, intrinsic, rotation_mode, padding_mode)
+                                                                pose, intrinsic, args.padding_mode)
 
-    diff_img = (tgt_img - ref_img_warped).abs() * valid_mask
+    diff_img = (tgt_img - ref_img_warped).abs()
 
-    diff_depth = ((computed_depth - projected_depth).abs() / (computed_depth + projected_depth).abs()).clamp(0,1) * valid_mask
+    diff_depth = ((computed_depth - projected_depth).abs() / (computed_depth + projected_depth).abs()).clamp(0,1)
 
-    if with_ssim:
-        ssim_map = (0.5*(1-ssim(tgt_img, ref_img_warped))).clamp(0,1) * valid_mask
-        diff_img = (0.15 * diff_img + 0.85 * ssim_map) * valid_mask
+    if args.with_ssim:
+        ssim_map = (0.5*(1-ssim(tgt_img, ref_img_warped))).clamp(0,1) 
+        diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
-    if with_mask:
-        weight_mask = (1 - diff_depth) * valid_mask
+    if args.with_mask:
+        weight_mask = (1 - diff_depth)
         diff_img = diff_img * weight_mask
 
     # compute loss
