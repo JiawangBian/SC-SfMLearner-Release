@@ -13,6 +13,11 @@ See the paper on [[arXiv](https://arxiv.org/abs/1908.10553)] and the [[project w
 
 <img src="misc/mask.png" alt="drawing" width="480"/>
 
+## Video demo of dense reconstruction using estimated depth
+
+[![3D reconstruction demo](https://img.youtube.com/vi/i4wZr79_pD8/hqdefault.jpg)](https://youtu.be/i4wZr79_pD8)
+
+
 
 ## Highlighted Features
   1. A geometry consistency loss for enforcing the scale-consistency of predictions between consecutive frames.
