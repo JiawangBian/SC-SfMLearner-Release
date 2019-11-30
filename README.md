@@ -15,7 +15,7 @@ See the paper on [[arXiv](https://arxiv.org/abs/1908.10553)] and the [[project w
 
 ## Video demo of dense reconstruction using estimated depth
 
-[![reconstruction demo](https://img.youtube.com/vi/i4wZr79_pD8/0.jpg)](https://www.youtube.com/watch?v=i4wZr79_pD8)
+[![reconstruction demo](https://jwbian.net/Data/reconstruction.png)](https://www.youtube.com/watch?v=i4wZr79_pD8)
 
 
 
