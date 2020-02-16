@@ -146,11 +146,14 @@ They are not coupled.
     
  ## Related projects
  
- * [SfMLearner-Pytorch](https://github.com/ClementPinard/SfmLearner-Pytorch)
+ * [SfMLearner-Pytorch](https://github.com/ClementPinard/SfmLearner-Pytorch) (CVPR 2017, our baseline framework.)
+
+ * [Depth-VO-Feat](https://github.com/Huangying-Zhan/Depth-VO-Feat) (CVPR 2018, trained on stereo videos for depth and visual odometry)
  
- * [DF-VO](https://github.com/Huangying-Zhan/DF-VO)
+  * [DF-VO](https://github.com/Huangying-Zhan/DF-VO) (ICRA 2020, use scale-consistent depth with optical flow for more accurate visual odometry)
  
- * [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti-odom-eval)
+ * [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti-odom-eval) (python code for kitti odometry evaluation)
+ 
 
 
 
