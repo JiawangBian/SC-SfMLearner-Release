@@ -9,7 +9,7 @@ Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video
 **NeurIPS** 2019 
 
 
-See the paper on [[arXiv](https://arxiv.org/abs/1908.10553)] and the [[project webpage](https://jwbian.net/sc-sfmlearner/)] for more details. 
+See our [[paper](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] and [[project webpage](https://jwbian.net/sc-sfmlearner/)] for more details. 
 
 <img src="misc/mask.png" alt="drawing" width="480"/>
 
@@ -144,6 +144,13 @@ They are not coupled.
     }
 
     
+ ## Related projects
+ 
+ * [SfMLearner-Pytorch](https://github.com/ClementPinard/SfmLearner-Pytorch)
+ 
+ * [DF-VO](https://github.com/Huangying-Zhan/DF-VO)
+ 
+ * [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti-odom-eval)
 
 
 
