@@ -32,6 +32,11 @@ It is based on [Clement Pinard's SfMLearner implementation](https://github.com/C
 in which we make little modification and add our proposed losses.
 
 
+## Updates
+Note that this is an updated and improved version, see the original version in 'Release / NeurIPS Version' for reproducing results in paper. Compared with NerIPS version, we
+(1) Change networks by using Resnet18 and Resnet50 pretrained model for encoder.
+(2) We add 'auto_mask' by Monodepth2.
+
 
 ## Prerequisite
 
