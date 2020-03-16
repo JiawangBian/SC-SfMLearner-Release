@@ -114,10 +114,9 @@ sh scripts/test_kitti_vo.sh
 
 ## Pretrained Models
 
-[Avalaible here](https://1drv.ms/u/s!AiV6XqkxJHE2g2LA8enHaQQOg0jZ?e=FNbH3c)
+[Avalaible here](https://1drv.ms/u/s!AiV6XqkxJHE2g2LA8enHaQQOg0jZ?e=DiUE1z)
 
-Note that depth models are trained on KITTI Raw dataset, and pose models are trained on KITTI Odometry dataset, respectively.
-They are not coupled.
+Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS models, please download the code from 'Release/NeurIPS version'.
 
 
 ### Depth Results (NeurIPS version on KITTI Eigen's splits)
