@@ -75,11 +75,11 @@ The "scripts" folder provides several examples for training and testing.
 
 You can train the depth model on KITTI Raw by running
 ```bash
-sh scripts/train_resnet_256.sh
+sh scripts/train_resnet18_depth_256.sh
 ```
 or train the pose model on KITTI Odometry by running
 ```bash
-sh scripts/train_posenet_256.sh
+sh scripts/train_resnet50_pose_256.sh
 ```
 Then you can start a `tensorboard` session in this folder by
 ```bash
@@ -93,17 +93,17 @@ and visualize the training progress by opening [https://localhost:6006](https://
 
 You can evaluate depth using Eigen's split by running
 ```bash
-sh scripts/run_depth_test.sh
+sh scripts/test_kitti_depth.sh
 ```
 and test visual odometry by running
 ```bash
-sh scripts/run_vo_test.sh
+sh scripts/test_kitti_vo.sh
 ```
-You can evaluate visual odometry results using KITTI provided C++ codes, or you can use the python code at this [repo](https://github.com/Huangying-Zhan/kitti_odom_eval)
+You can evaluate visual odometry results using python code at this [repo](https://github.com/Huangying-Zhan/kitti_odom_eval)
 
 Besides, you can evaluate 5-frame pose as SfMLearner by running
 ```bash
-sh scripts/run_pose_test.sh
+sh scripts/test_kitti_vo.sh
 ```
 
 
@@ -115,14 +115,24 @@ Note that depth models are trained on KITTI Raw dataset, and pose models are tra
 They are not coupled.
 
 
-### Depth Results (KITTI Eigen's splits)
+### Depth Results (NeurIPS version on KITTI Eigen's splits)
 
 |   Models   | Abs Rel | Sq Rel | RMSE  | RMSE(log) | Acc.1 | Acc.2 | Acc.3 |
 |------------|---------|--------|-------|-----------|-------|-------|-------|
 | k_depth    | 0.137   | 1.089  | 5.439 | 0.217     | 0.830 | 0.942 | 0.975 |
 | cs+k_depth | 0.128   | 1.047  | 5.234 | 0.208     | 0.846 | 0.947 | 0.976 |
 
-### Visual Odometry Results (Train on KITTI 00-08)
+
+### Depth Results (Updated version on KITTI Eigen's splits)
+
+|   Models   | Abs Rel | Sq Rel | RMSE  | RMSE(log) | Acc.1 | Acc.2 | Acc.3 |
+|------------|---------|--------|-------|-----------|-------|-------|-------|
+| resnet18   | 0.119   | 0.858  | 4.949 | 0.197     | 0.863 | 0.957 | 0.981 |
+| resnet50   | 0.115   | 0.814  | 4.705 | 0.191     | 0.873 | 0.960 | 0.982 |
+
+
+
+### Visual Odometry Results (NeurIPS version, Trained on KITTI 00-08)
 
 |   Models   |                     | Seq. 09 | Seq. 10 |
 |------------|---------------------|---------|---------|
