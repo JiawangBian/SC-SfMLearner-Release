@@ -239,6 +239,8 @@ def inverse_warp2(img, depth, ref_depth, pose, intrinsics, padding_mode='zeros')
     Returns:
         projected_img: Source image warped to the target image plane
         valid_mask: Float array indicating point validity
+        projected_depth: sampled depth from source image  
+        computed_depth: computed depth of source image using the target depth
     """
     check_sizes(img, 'img', 'B3HW')
     check_sizes(depth, 'depth', 'B1HW')
@@ -256,15 +258,12 @@ def inverse_warp2(img, depth, ref_depth, pose, intrinsics, padding_mode='zeros')
     proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
 
     rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
-    src_pixel_coords, computed_depth = cam2pixel2(
-        cam_coords, rot, tr, padding_mode)  # [B,H,W,2]
-    projected_img = F.grid_sample(
-        img, src_pixel_coords, padding_mode=padding_mode)
+    src_pixel_coords, computed_depth = cam2pixel2(cam_coords, rot, tr, padding_mode)  # [B,H,W,2]
+    projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=padding_mode, align_corners=False)
 
     valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
     valid_mask = valid_points.unsqueeze(1).float()
 
-    projected_depth = F.grid_sample(
-        ref_depth, src_pixel_coords, padding_mode=padding_mode).clamp(min=1e-3)
+    projected_depth = F.grid_sample(ref_depth, src_pixel_coords, padding_mode=padding_mode, align_corners=False)
 
     return projected_img, valid_mask, projected_depth, computed_depth

@@ -2,7 +2,8 @@ from __future__ import division
 import torch
 import random
 import numpy as np
-from scipy.misc import imresize
+# from scipy.misc import imresize
+from skimage.transform import resize as imresize
 
 '''Set of tranform random routines that takes list of inputs as arguments,
 in order to have random but coherent transformations.'''
@@ -76,8 +77,7 @@ class RandomScaleCrop(object):
 
         offset_y = np.random.randint(scaled_h - in_h + 1)
         offset_x = np.random.randint(scaled_w - in_w + 1)
-        cropped_images = [im[offset_y:offset_y + in_h,
-                             offset_x:offset_x + in_w] for im in scaled_images]
+        cropped_images = [im[offset_y:offset_y + in_h, offset_x:offset_x + in_w] for im in scaled_images]
 
         output_intrinsics[0, 2] -= offset_x
         output_intrinsics[1, 2] -= offset_y
