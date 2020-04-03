@@ -105,12 +105,14 @@ You can evaluate depth on Eigen's split by running
 ```bash
 sh scripts/test_kitti_depth.sh
 ```
-and test visual odometry by running
+evaluate visual odometry by running
 ```bash
 sh scripts/test_kitti_vo.sh
 ```
-
-
+and visualize depth by running
+```bash
+sh scripts/run_inference.sh
+```
 
 ## Pretrained Models
 
