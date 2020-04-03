@@ -2,34 +2,38 @@
 
 This codebase implements the system described in the paper:
 
-Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video
+ >Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video
+ 
+ >[Jia-Wang Bian](https://jwbian.net/), Zhichao Li, Naiyan Wang, Huangying Zhan, Chunhua Shen, Ming-Ming Cheng, Ian Reid
 
-[Jia-Wang Bian](https://jwbian.net/), Zhichao Li, Naiyan Wang, Huangying Zhan, Chunhua Shen, Ming-Ming Cheng, Ian Reid
-
-**NeurIPS** 2019 
+ >**NeurIPS** 2019 [[PDF](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] [[Project webpage](https://jwbian.net/sc-sfmlearner/)]
 
 
-See our [[paper](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] and [[project webpage](https://jwbian.net/sc-sfmlearner/)] for more details. 
-
-<img src="misc/mask.png" alt="drawing" width="480"/>
-
-## Video demo of dense reconstruction using estimated depth
+## Dense reconstruction (left) using the estimated depth map (bottom right)
 
 [![reconstruction demo](https://jwbian.net/Data/reconstruction.png)](https://www.youtube.com/watch?v=i4wZr79_pD8)
 
 
 
-## Highlighted Features
-  1. A geometry consistency loss for enforcing the scale-consistency of predictions between consecutive frames.
-  2. A self-discovered mask for detecting moving objects and occlusions.
-  3. Enabling the unsupervised estimator (learned from monocular videos) to do visual odometry on a long video.
+## Core contributions
+  1. A geometry consistency loss, which makes the predicted depths to be globally scale consistent.
+  2. A self-discovered mask, which detects moving objects and occlusions effectively and efficiently.
 
+
+
+ ## If you find our work useful in your research please consider citing our paper:
+ 
+    @inproceedings{bian2019depth,
+      title={Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video},
+      author={Bian, Jia-Wang and Li, Zhichao and Wang, Naiyan and Zhan, Huangying and Shen, Chunhua and Cheng, Ming-Ming and Reid, Ian},
+      booktitle= {Thirty-third Conference on Neural Information Processing Systems (NeurIPS)},
+      year={2019}
+    }
 
 
 ## Preamble
 This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 10.0 on Ubuntu 16.04.
-It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch),
-in which we make little modification and add our proposed losses.
+It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch).
 
 
 ## Updates
@@ -148,14 +152,6 @@ Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS mode
 <img src="misc/vo.png" alt="drawing" width="450"/>
 
 
- ## If you use this work, please cite our paper
- 
-    @inproceedings{bian2019depth,
-      title={Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video},
-      author={Bian, Jia-Wang and Li, Zhichao and Wang, Naiyan and Zhan, Huangying and Shen, Chunhua and Cheng, Ming-Ming and Reid, Ian},
-      booktitle= {Thirty-third Conference on Neural Information Processing Systems (NeurIPS)},
-      year={2019}
-    }
 
     
  ## Related projects
@@ -168,6 +164,3 @@ Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS mode
  
  * [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti-odom-eval) (python code for kitti odometry evaluation)
  
-
-
-
