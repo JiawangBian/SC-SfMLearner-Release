@@ -109,7 +109,6 @@ and test visual odometry by running
 ```bash
 sh scripts/test_kitti_vo.sh
 ```
-You can evaluate visual odometry results using [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti_odom_eval)
 
 
 
