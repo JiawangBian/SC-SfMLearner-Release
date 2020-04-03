@@ -34,15 +34,16 @@ This codebase implements the system described in the paper:
 
 
 
-## Preamble
-This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 10.0 on Ubuntu 16.04. It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch).
-
-
-
 ## Updates (Compared with NeurIPS version)
 Note that this is an updated and improved version, find the original version in 'Release / NeurIPS Version' for reproducing the results reported in our paper. Compared with NeurIPS version, we
 (1) Change networks by using Resnet18 and Resnet50 pretrained model (on ImageNet) for depth and pose encoders.
 (2) We add 'auto_mask' by Monodepth2 to remove stationary points.
+
+
+
+## Preamble
+This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 10.0 on Ubuntu 16.04. It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch).
+
 
 
 ## Prerequisite
