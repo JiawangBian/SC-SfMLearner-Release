@@ -70,11 +70,9 @@ It is also advised to have python3 bindings for opencv for tensorboard visualiza
 
 ## Preparing training data
 
-See "scripts/run_prepare_data.sh" for examples, including KITTI Raw, Cityscapes, and KITTI Odometry.
+See "scripts/run_prepare_data.sh".
 
 For [KITTI Raw dataset](http://www.cvlibs.net/datasets/kitti/raw_data.php), download the dataset using this [script](http://www.cvlibs.net/download.php?file=raw_data_downloader.zip) provided on the official website.
-
-For [Cityscapes](https://www.cityscapes-dataset.com/), download the following packages: 1) `leftImg8bit_sequence_trainvaltest.zip`, 2) `camera_trainvaltest.zip`. You will probably need to contact the administrators to be able to get it. 
 
 For [KITTI Odometry dataset](http://www.cvlibs.net/datasets/kitti/eval_odometry.php) download the dataset with color images.
 
@@ -116,10 +114,9 @@ You can evaluate visual odometry results using python code at this [repo](https:
 
 ## Pretrained Models
 
-[Avalaible here](https://1drv.ms/u/s!AiV6XqkxJHE2g2LA8enHaQQOg0jZ?e=DiUE1z)
+[Latest Models](https://1drv.ms/u/s!AiV6XqkxJHE2kxX_Gek5fEQvMGma?e=ZfrnbR)
 
-Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS models, please download the code from 'Release/NeurIPS version'.
-
+To evaluate the [NeurIPS models](https://1drv.ms/u/s!AiV6XqkxJHE2kxSHVMYvo7DmGqNb?e=bg3tWg), please download the code from 'Release/NeurIPS version'.
 
 
 ### Depth Results (Updated version, KITTI raw dataset, using the Eigen's splits)
@@ -140,7 +137,6 @@ Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS mode
 
 
 
-
     
  ## Related projects
  
@@ -148,7 +144,7 @@ Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS mode
 
  * [Depth-VO-Feat](https://github.com/Huangying-Zhan/Depth-VO-Feat) (CVPR 2018, trained on stereo videos for depth and visual odometry)
  
-  * [DF-VO](https://github.com/Huangying-Zhan/DF-VO) (ICRA 2020, use scale-consistent depth with optical flow for more accurate visual odometry)
+ * [DF-VO](https://github.com/Huangying-Zhan/DF-VO) (ICRA 2020, use scale-consistent depth with optical flow for more accurate visual odometry)
  
  * [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti-odom-eval) (python code for kitti odometry evaluation)
  
