@@ -3,10 +3,11 @@
 This codebase implements the system described in the paper:
 
  >Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video
- 
+ >
  >[Jia-Wang Bian](https://jwbian.net/), Zhichao Li, Naiyan Wang, Huangying Zhan, Chunhua Shen, Ming-Ming Cheng, Ian Reid
-
+ >
  >**NeurIPS** 2019 [[PDF](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] [[Project webpage](https://jwbian.net/sc-sfmlearner/)]
+
 
 
 ## Dense reconstruction (left) using the estimated depth map (bottom right)
@@ -18,6 +19,7 @@ This codebase implements the system described in the paper:
 ## Core contributions
   1. A geometry consistency loss, which makes the predicted depths to be globally scale consistent.
   2. A self-discovered mask, which detects moving objects and occlusions effectively and efficiently.
+  3. The scale-consistent predictions allow for doing Monocular Visual Odometry on long videos.
 
 
 
@@ -31,15 +33,16 @@ This codebase implements the system described in the paper:
     }
 
 
+
 ## Preamble
-This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 10.0 on Ubuntu 16.04.
-It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch).
+This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 10.0 on Ubuntu 16.04. It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch).
 
 
-## Updates
-Note that this is an updated and improved version, see the original version in 'Release / NeurIPS Version' for reproducing results in paper. Compared with NerIPS version, we
-(1) Change networks by using Resnet18 and Resnet50 pretrained model for encoder.
-(2) We add 'auto_mask' by Monodepth2.
+
+## Updates (Compared with NeurIPS version)
+Note that this is an updated and improved version, find the original version in 'Release / NeurIPS Version' for reproducing the results reported in our paper. Compared with NeurIPS version, we
+(1) Change networks by using Resnet18 and Resnet50 pretrained model (on ImageNet) for depth and pose encoders.
+(2) We add 'auto_mask' by Monodepth2 to remove stationary points.
 
 
 ## Prerequisite
@@ -60,7 +63,6 @@ tensorboardX
 blessings
 progressbar2
 path.py
-evo
 ```
 
 It is also advised to have python3 bindings for opencv for tensorboard visualizations
@@ -110,10 +112,6 @@ sh scripts/test_kitti_vo.sh
 ```
 You can evaluate visual odometry results using python code at this [repo](https://github.com/Huangying-Zhan/kitti_odom_eval)
 
-Besides, you can evaluate 5-frame pose as SfMLearner by running
-```bash
-sh scripts/test_kitti_vo.sh
-```
 
 
 ## Pretrained Models
@@ -123,15 +121,8 @@ sh scripts/test_kitti_vo.sh
 Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS models, please download the code from 'Release/NeurIPS version'.
 
 
-### Depth Results (NeurIPS version on KITTI Eigen's splits)
 
-|   Models   | Abs Rel | Sq Rel | RMSE  | RMSE(log) | Acc.1 | Acc.2 | Acc.3 |
-|------------|---------|--------|-------|-----------|-------|-------|-------|
-| k_depth    | 0.137   | 1.089  | 5.439 | 0.217     | 0.830 | 0.942 | 0.975 |
-| cs+k_depth | 0.128   | 1.047  | 5.234 | 0.208     | 0.846 | 0.947 | 0.976 |
-
-
-### Depth Results (Updated version on KITTI Eigen's splits)
+### Depth Results (Updated version, KITTI raw dataset, using the Eigen's splits)
 
 |   Models   | Abs Rel | Sq Rel | RMSE  | RMSE(log) | Acc.1 | Acc.2 | Acc.3 |
 |------------|---------|--------|-------|-----------|-------|-------|-------|
@@ -140,16 +131,13 @@ Both NeurIPS models and Updated Models are provided. For evaluating NeurIPS mode
 
 
 
-### Visual Odometry Results (NeurIPS version, Trained on KITTI 00-08)
+### Visual Odometry Results (Updated version, KITTI odometry dataset, trained on 00-08)
 
-|   Models   |                     | Seq. 09 | Seq. 10 |
-|------------|---------------------|---------|---------|
-|   k_pose   |t_err (%)            | 11.2    | 10.1    |
-|            |r_err (degree/100m)  | 3.35    | 4.96    | 
-|  cs+k_pose |t_err (%)            | 8.24    | 10.7    |
-|            |r_err (degree/100m)  | 2.19    | 4.58    | 
+|Metric               | Seq. 09 | Seq. 10 |
+|---------------------|---------|---------|
+|t_err (%)            | 7.31    | 7.79    |
+|r_err (degree/100m)  | 3.05    | 4.90    | 
 
-<img src="misc/vo.png" alt="drawing" width="450"/>
 
 
 
