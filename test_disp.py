@@ -11,7 +11,7 @@ import time
 
 parser = argparse.ArgumentParser(description='Script for DispNet testing with corresponding groundTruth',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--pretrained-dispnet", required=True, type=str, help="pretrained DispNet path")
+parser.add_argument("--pretrained-dispnet", required=True, type=str, help="pretrained DispResNet path")
 parser.add_argument("--img-height", default=256, type=int, help="Image height")
 parser.add_argument("--img-width", default=832, type=int, help="Image width")
 parser.add_argument("--min-depth", default=1e-3)
