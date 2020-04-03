@@ -101,7 +101,7 @@ and visualize the training progress by opening [https://localhost:6006](https://
 
 ## Evaluation
 
-You can evaluate depth using Eigen's split by running
+You can evaluate depth on Eigen's split by running
 ```bash
 sh scripts/test_kitti_depth.sh
 ```
@@ -109,7 +109,7 @@ and test visual odometry by running
 ```bash
 sh scripts/test_kitti_vo.sh
 ```
-You can evaluate visual odometry results using python code at this [repo](https://github.com/Huangying-Zhan/kitti_odom_eval)
+You can evaluate visual odometry results using [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti_odom_eval)
 
 
 
