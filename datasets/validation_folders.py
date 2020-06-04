@@ -2,25 +2,21 @@ import torch.utils.data as data
 import numpy as np
 from imageio import imread
 from path import Path
+import os
+import torch
 
-
-def crawl_folders(folders_list):
+def crawl_folders(folders_list, dataset='nyu'):
         imgs = []
-        depth = []
+        depths = []
         for folder in folders_list:
             current_imgs = sorted(folder.files('*.jpg'))
-            current_depth = []
-            for img in current_imgs:
-                d = img.dirname()/(img.name[:-4] + '.npy')
-                assert(d.isfile()), "depth file {} not found".format(str(d))
-                depth.append(d)
+            if dataset == 'nyu':
+                current_depth = sorted((folder/'depth/').files('*.png'))
+            elif dataset == 'kitti':
+                current_depth = sorted(folder.files('*.npy'))
             imgs.extend(current_imgs)
-            depth.extend(current_depth)
-        return imgs, depth
-
-
-def load_as_float(path):
-    return imread(path).astype(np.float32)
+            depths.extend(current_depth)
+        return imgs, depths
 
 
 class ValidationSet(data.Dataset):
@@ -37,19 +33,26 @@ class ValidationSet(data.Dataset):
         transform functions must take in a list a images and a numpy array which can be None
     """
 
-    def __init__(self, root, transform=None):
+    def __init__(self, root, transform=None, dataset='nyu'):
         self.root = Path(root)
         scene_list_path = self.root/'val.txt'
         self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
-        self.imgs, self.depth = crawl_folders(self.scenes)
         self.transform = transform
+        self.dataset = dataset
+        self.imgs, self.depth = crawl_folders(self.scenes, self.dataset)
 
     def __getitem__(self, index):
-        img = load_as_float(self.imgs[index])
-        depth = np.load(self.depth[index]).astype(np.float32)
+        img = imread(self.imgs[index]).astype(np.float32)
+
+        if self.dataset=='nyu':
+            depth = torch.from_numpy(imread(self.depth[index]).astype(np.float32)).float()/5000
+        elif self.dataset=='kitti':
+            depth = torch.from_numpy(np.load(self.depth[index]).astype(np.float32))
+
         if self.transform is not None:
             img, _ = self.transform([img], None)
             img = img[0]
+
         return img, depth
 
     def __len__(self):
