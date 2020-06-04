@@ -2,7 +2,7 @@
 # https://github.com/mrharicot/monodepth/blob/master/utils/evaluation_utils.py
 import numpy as np
 from path import Path
-from scipy.misc import imread
+from imageio import imread
 from tqdm import tqdm
 
 

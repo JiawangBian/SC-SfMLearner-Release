@@ -6,5 +6,4 @@ argparse
 tensorboardX
 blessings
 progressbar2
-path.py
-evo
+path

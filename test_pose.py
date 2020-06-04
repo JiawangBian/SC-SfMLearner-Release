@@ -1,7 +1,4 @@
 import torch
-from torch.autograd import Variable
-from torchvision import transforms
-
 from skimage.transform import resize as imresize
 import numpy as np
 from path import Path
@@ -15,8 +12,8 @@ from inverse_warp import pose_vec2mat
 parser = argparse.ArgumentParser(description='Script for PoseNet testing with corresponding groundTruth from KITTI Odometry',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("pretrained_posenet", type=str, help="pretrained PoseNet path")
-parser.add_argument("--img-height", default=128, type=int, help="Image height")
-parser.add_argument("--img-width", default=416, type=int, help="Image width")
+parser.add_argument("--img-height", default=256, type=int, help="Image height")
+parser.add_argument("--img-width", default=832, type=int, help="Image width")
 parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
 parser.add_argument("--min-depth", default=1e-3)
 parser.add_argument("--max-depth", default=80)

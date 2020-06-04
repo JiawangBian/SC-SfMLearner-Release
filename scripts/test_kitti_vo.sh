@@ -1,4 +1,4 @@
-DATASET_DIR=/media/bjw/Disk/Dataset/kitti_odometry/sequences/
+DATASET_DIR=/media/bjw/Disk/Dataset/kitti_odom_test/sequences/
 OUTPUT_DIR=vo_results/
 
 POSE_NET=checkpoints/resnet50_pose_256/exp_pose_model_best.pth.tar
