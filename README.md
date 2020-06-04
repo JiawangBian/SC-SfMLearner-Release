@@ -37,10 +37,11 @@ This codebase implements the system described in the paper:
 
 
 ## Updates (Compared with NeurIPS version)
-Note that this is an updated and improved version, find the original version in 'Release / NeurIPS Version' for reproducing the results reported in our paper. Compared with NeurIPS version, we
+Note that this is an updated version, and you can find the original version in 'Release / NeurIPS Version' for reproducing the results reported in paper. Compared with NeurIPS version, we
 (1) Change networks by using Resnet18 and Resnet50 pretrained model (on ImageNet) for depth and pose encoders.
 (2) We add 'auto_mask' by Monodepth2 to remove stationary points.
 
+We add training and testing on NYUv2 indoor depth dataset. See [Unsupervised-Indoor-Depth](https://github.com/JiawangBian/Unsupervised-Indoor-Depth) for details.
 
 
 ## Preamble
@@ -154,4 +155,6 @@ To evaluate the [NeurIPS models](https://1drv.ms/u/s!AiV6XqkxJHE2kxSHVMYvo7DmGqN
  * [DF-VO](https://github.com/Huangying-Zhan/DF-VO) (ICRA 2020, use scale-consistent depth with optical flow for more accurate visual odometry)
  
  * [Kitti-Odom-Eval-Python](https://github.com/Huangying-Zhan/kitti-odom-eval) (python code for kitti odometry evaluation)
+ 
+ * [Unsupervised-Indoor-Depth](https://github.com/JiawangBian/Unsupervised-Indoor-Depth) (Using SC-SfMLearner in NYUv2 dataset)
  
