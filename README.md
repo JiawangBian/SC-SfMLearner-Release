@@ -65,20 +65,23 @@ argparse
 tensorboardX
 blessings
 progressbar2
-path.py
+path
 ```
 
 It is also advised to have python3 bindings for opencv for tensorboard visualizations
 
 
-## Preparing training data
+## Datasets
 
 See "scripts/run_prepare_data.sh".
 
-For [KITTI Raw dataset](http://www.cvlibs.net/datasets/kitti/raw_data.php), download the dataset using this [script](http://www.cvlibs.net/download.php?file=raw_data_downloader.zip) provided on the official website.
+    For KITTI Raw dataset, download the dataset using this script http://www.cvlibs.net/download.php?file=raw_data_downloader.zip) provided on the official website.
 
-For [KITTI Odometry dataset](http://www.cvlibs.net/datasets/kitti/eval_odometry.php) download the dataset with color images.
+    For KITTI Odometry dataset, download the dataset with color images.
 
+Or you can download our pre-processed dataset from the following link
+
+[kitti_256 (for kitti raw)](https://1drv.ms/u/s!AiV6XqkxJHE2g1zyXt4mCKNbpdiw?e=ZJAhIl) | [kitti_vo_256 (for kitti odom)](https://1drv.ms/u/s!AiV6XqkxJHE2k3YRX5Z8c_i7U5x7?e=ogw0c7) | [kitti_depth_test (eigen split)](https://1drv.ms/u/s!AiV6XqkxJHE2kz5Zy7jWZd2GyMR2?e=kBD4lb) | [kitti_vo_test (seqs 09-10)](https://1drv.ms/u/s!AiV6XqkxJHE2k0BSVZE-AJNvye9f?e=ztiSWp)
 
 
 ## Training
