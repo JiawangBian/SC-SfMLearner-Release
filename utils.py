@@ -50,7 +50,7 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
 
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)
-        array = 0.5 + tensor.numpy()*0.5
+        array = 0.45 + tensor.numpy()*0.225
     return array
 
 
