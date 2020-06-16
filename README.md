@@ -8,9 +8,11 @@ This codebase implements the system described in the paper:
  >
  >**NeurIPS** 2019 [[PDF](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] [[Project webpage](https://jwbian.net/sc-sfmlearner/)]
 
-## Point cloud visulization on KITTI-09
+## Point cloud visulization on KITTI (left) and real-world data (right)
 
- [<img src="https://jwbian.net/wp-content/uploads/2020/06/77CXZX@H37PIWDBX0R7T.png" width="40%">](https://www.youtube.com/watch?v=OkfK3wmMnpo)
+ [<img src="https://jwbian.net/wp-content/uploads/2020/06/77CXZX@H37PIWDBX0R7T.png" height="300">](https://www.youtube.com/watch?v=OkfK3wmMnpo)
+ [<img src="https://jwbian.net/wp-content/uploads/2020/06/UFIEB960XK6V82H2UN6P25.png" height="300">](https://youtu.be/ah6iuWudR5k)
+
 
 ## Dense reconstruction (left) using the estimated depth (bottom right)
 
