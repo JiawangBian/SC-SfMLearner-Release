@@ -60,7 +60,7 @@ pip3 install -r requirements.txt
 or install manually the following packages :
 
 ```
-torch >= 1.0.1
+torch >= 1.5.1
 imageio
 matplotlib
 scipy
