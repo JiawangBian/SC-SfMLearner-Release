@@ -1,12 +1,14 @@
-# SC-SfMLearner
+# SC-Depth
 
 This codebase implements the system described in the paper:
 
- >Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video
+ >Unsupervised Scale-consistent Depth Learning from Video
  >
- >[Jia-Wang Bian](https://jwbian.net/), Zhichao Li, Naiyan Wang, Huangying Zhan, Chunhua Shen, Ming-Ming Cheng, Ian Reid
+ >[Jia-Wang Bian](https://jwbian.net/), Huangying Zhan, Naiyan Wang, Zhichao Li, Le Zhang, Chunhua Shen, Ming-Ming Cheng, Ian Reid
  >
- >**NeurIPS** 2019 [[PDF](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] [[Project webpage](https://jwbian.net/sc-sfmlearner/)]
+ >**IJCV** 2021 [[PDF](https://jwbian.net/Papers/SC_Depth_IJCV_21.pdf)]
+ >
+ >This is an extended version of **NeurIPS** 2019 [[PDF](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] [[Project webpage](https://jwbian.net/sc-sfmlearner/)]
 
 ## Point cloud visulization on KITTI (left) and real-world data (right)
 
@@ -24,16 +26,17 @@ This codebase implements the system described in the paper:
   1. A geometry consistency loss, which makes the predicted depths to be globally scale consistent.
   2. A self-discovered mask, which detects moving objects and occlusions effectively and efficiently.
   3. The scale-consistent predictions allow for doing Monocular Visual Odometry on long videos.
+  4. An integration to Visual SLAM systems.
 
 
 
  ## If you find our work useful in your research please consider citing our paper:
  
-    @inproceedings{bian2019depth,
-      title={Unsupervised Scale-consistent Depth and Ego-motion Learning from Monocular Video},
-      author={Bian, Jia-Wang and Li, Zhichao and Wang, Naiyan and Zhan, Huangying and Shen, Chunhua and Cheng, Ming-Ming and Reid, Ian},
-      booktitle= {Thirty-third Conference on Neural Information Processing Systems (NeurIPS)},
-      year={2019}
+    @article{bian2021sc, 
+      title={Unsupervised Scale-consistent Depth Learning from Video}, 
+      author={Bian, Jia-Wang and Zhan, Huangying and Wang, Naiyan and Li, Zhichao and Zhang, Le and Shen, Chunhua and Cheng, Ming-Ming and Reid, Ian}, 
+      journal= {International Journal of Computer Vision (IJCV)}, 
+      year={2021} 
     }
 
 
