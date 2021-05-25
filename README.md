@@ -10,24 +10,23 @@ This codebase implements the system described in the paper:
  >
  >This is an extended version of **NeurIPS** 2019 [[PDF](http://papers.nips.cc/paper/8299-unsupervised-scale-consistent-depth-and-ego-motion-learning-from-monocular-video)] [[Project webpage](https://jwbian.net/sc-sfmlearner/)]
 
+
 ## Point cloud visulization on KITTI (left) and real-world data (right)
 
  [<img src="https://jwbian.net/wp-content/uploads/2020/06/77CXZX@H37PIWDBX0R7T.png" height="300">](https://www.youtube.com/watch?v=OkfK3wmMnpo)
  [<img src="https://jwbian.net/wp-content/uploads/2020/06/UFIEB960XK6V82H2UN6P25.png" height="300">](https://youtu.be/ah6iuWudR5k)
 
 
-## Dense reconstruction (left) using the estimated depth (bottom right)
+## Voexel reconstruction (left) using the estimated depth (bottom right)
 
 [![reconstruction demo](https://jwbian.net/Data/reconstruction.png)](https://www.youtube.com/watch?v=i4wZr79_pD8)
 
 
 
-## Core contributions
+## Contributions
   1. A geometry consistency loss, which makes the predicted depths to be globally scale consistent.
-  2. A self-discovered mask, which detects moving objects and occlusions effectively and efficiently.
-  3. The scale-consistent predictions allow for doing Monocular Visual Odometry on long videos.
-  4. An integration to Visual SLAM systems.
-
+  2. A self-discovered mask, which detects moving objects and occlusions for boosting accuracy.
+  3. Scale-consistent predictions, which can be used in the Monocular Visual SLAM system.
 
 
  ## If you find our work useful in your research please consider citing our paper:
@@ -42,16 +41,15 @@ This codebase implements the system described in the paper:
 
 
 ## Updates (Compared with NeurIPS version)
-Note that this is an updated version, and you can find the original version in 'Release / NeurIPS Version' for reproducing the results reported in paper. Compared with NeurIPS version, we
+Note that this is an improved version, and you can find the NeurIPS version in 'Release / NeurIPS Version' for reproducing the results reported in paper. Compared with NeurIPS version, we
 (1) Change networks by using Resnet18 and Resnet50 pretrained model (on ImageNet) for depth and pose encoders.
-(2) We add 'auto_mask' by Monodepth2 to remove stationary points.
-
-We add training and testing on NYUv2 indoor depth dataset. See [Unsupervised-Indoor-Depth](https://github.com/JiawangBian/Unsupervised-Indoor-Depth) for details.
+(2) Add 'auto_mask' by Monodepth2 to remove stationary points.
+(3) Integrate the depth and pose prediction into the ORB-SLAM system.
+(4) Add training and testing on NYUv2 indoor dataset. See [Unsupervised-Indoor-Depth](https://github.com/JiawangBian/Unsupervised-Indoor-Depth) for details.
 
 
 ## Preamble
 This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 10.0 on Ubuntu 16.04. It is based on [Clement Pinard's SfMLearner implementation](https://github.com/ClementPinard/SfmLearner-Pytorch).
-
 
 
 ## Prerequisite
@@ -59,23 +57,6 @@ This codebase was developed and tested with python 3.6, Pytorch 1.0.1, and CUDA 
 ```bash
 pip3 install -r requirements.txt
 ```
-
-or install manually the following packages :
-
-```
-torch >= 1.5.1
-imageio
-matplotlib
-scipy
-argparse
-tensorboardX
-blessings
-progressbar2
-path
-```
-
-It is also advised to have python3 bindings for opencv for tensorboard visualizations
-
 
 ## Datasets
 
@@ -132,21 +113,48 @@ sh scripts/run_inference.sh
 To evaluate the [NeurIPS models](https://1drv.ms/u/s!AiV6XqkxJHE2kxSHVMYvo7DmGqNb?e=bg3tWg), please download the code from 'Release/NeurIPS version'.
 
 
-### Depth Results (Updated version, KITTI raw dataset, using the Eigen's splits)
+## Depth Results 
+
+#### KITTI raw dataset (Eigen's splits)
 
 |   Models   | Abs Rel | Sq Rel | RMSE  | RMSE(log) | Acc.1 | Acc.2 | Acc.3 |
 |------------|---------|--------|-------|-----------|-------|-------|-------|
-| resnet18   | 0.119   | 0.858  | 4.949 | 0.197     | 0.863 | 0.957 | 0.981 |
-| resnet50   | 0.115   | 0.814  | 4.705 | 0.191     | 0.873 | 0.960 | 0.982 |
+| resnet18   | 0.119   | 0.857  | 4.950 | 0.197     | 0.863 | 0.957 | 0.981 |
+| resnet50   | 0.114   | 0.813  | 4.706 | 0.191     | 0.873 | 0.960 | 0.982 |
+
+
+#### NYUv2 dataset (Original Video)
+
+|   Models   | Abs Rel | Log10  | RMSE  | Acc.1 | Acc.2 | Acc.3 |
+|------------|---------|--------|-------|-------|-------|-------|
+| resnet18   | 0.159   | 0.068  | 0.608 | 0.772 | 0.939 | 0.982 |
+| resnet50   | 0.157   | 0.067  | 0.593 | 0.780 | 0.940 | 0.984 |
+
+
+#### NYUv2 dataset (Rectifed Images by [Unsupervised-Indoor-Depth](https://github.com/JiawangBian/Unsupervised-Indoor-Depth))
+
+|   Models   | Abs Rel | Log10  | RMSE  | Acc.1 | Acc.2 | Acc.3 |
+|------------|---------|--------|-------|-------|-------|-------|
+| resnet18   | 0.143   | 0.060  | 0.538 | 0.812 | 0.951 | 0.986 |
+| resnet50   | 0.142   | 0.060  | 0.529 | 0.813 | 0.952 | 0.987 |
 
 
 
-### Visual Odometry Results (Updated version, KITTI odometry dataset, trained on 00-08)
+## Visual Odometry Results on KITTI odometry dataset 
+
+#### Network prediction (trained on 00-08)
 
 |Metric               | Seq. 09 | Seq. 10 |
 |---------------------|---------|---------|
 |t_err (%)            | 7.31    | 7.79    |
 |r_err (degree/100m)  | 3.05    | 4.90    | 
+
+#### Pseudo-RGBD SLAM output (Integration of SC-Depth in ORB-SLAM2)
+
+|Metric               | Seq. 09 | Seq. 10 |
+|---------------------|---------|---------|
+|t_err (%)            | 5.08    | 4.32    |
+|r_err (degree/100m)  | 1.05    | 2.34    | 
 
 
 
