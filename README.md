@@ -17,7 +17,7 @@ This codebase implements the system described in the paper:
  [<img src="https://jwbian.net/wp-content/uploads/2020/06/UFIEB960XK6V82H2UN6P25.png" height="300">](https://youtu.be/ah6iuWudR5k)
 
 
-## Voexel reconstruction (left) using the estimated depth (bottom right)
+## Dense Voxel reconstruction (left) using the estimated depth (bottom right)
 
 [![reconstruction demo](https://jwbian.net/Data/reconstruction.png)](https://www.youtube.com/watch?v=i4wZr79_pD8)
 
