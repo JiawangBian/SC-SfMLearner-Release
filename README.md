@@ -32,7 +32,7 @@ This codebase implements the system described in the paper:
 
  ## If you find our work useful in your research please consider citing our paper:
  
-    @article{bian2021sc, 
+    @article{bian2021ijcv, 
       title={Unsupervised Scale-consistent Depth Learning from Video}, 
       author={Bian, Jia-Wang and Zhan, Huangying and Wang, Naiyan and Li, Zhichao and Zhang, Le and Shen, Chunhua and Cheng, Ming-Ming and Reid, Ian}, 
       journal= {International Journal of Computer Vision (IJCV)}, 
