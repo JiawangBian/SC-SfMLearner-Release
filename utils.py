@@ -55,12 +55,59 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
 
 
 def save_checkpoint(save_path, dispnet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
+
     file_prefixes = ['dispnet', 'exp_pose']
+
     states = [dispnet_state, exp_pose_state]
+
     for (prefix, state) in zip(file_prefixes, states):
-        torch.save(state, save_path/'{}_{}'.format(prefix, filename))
+        torch.save(state, '{}/{}_{}'.format(save_path, prefix, filename))
 
     if is_best:
         for prefix in file_prefixes:
-            shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
-                            save_path/'{}_model_best.pth.tar'.format(prefix))
+
+            shutil.copyfile(
+                '{}/{}_{}'.format(save_path, prefix, filename),
+                '{}/{}_model_best.pth.tar'.format(save_path, prefix)
+            )
+
+
+def count_parameters(model):
+
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def print_batch(batch_index, target_image, reference_images, intrinsics):
+
+    print('[ Batch {:d} ]'.format(batch_index))
+
+    print('\t[ Target images ] Shape = {} | Data-type = {} | Device = {} | Min, Max = {:0.4f}, {:0.4f}'.format(
+            target_image.shape,
+            target_image.dtype,
+            target_image.device,
+            target_image.min(),
+            target_image.max(),
+        )
+    )
+
+    print('\t[ Reference images ] N = {} images'.format(len(reference_images)))
+
+    for ri_idx, ri in enumerate(reference_images):
+
+        print('\t\t[ {} ] Shape = {} | Data-type = {} | Device = {} ls -'.format(
+                ri_idx,
+                ri.shape,
+                ri.dtype,
+                ri.device,
+                ri.min(),
+                ri.max(),
+            )
+        )
+
+    print('\t[ Intrinsic matrix ] Shape = {} | Data-type = {} | Device = {}'.format(
+            intrinsics.shape,
+            intrinsics.dtype,
+            intrinsics.device
+        )
+    )
+    print(' ')

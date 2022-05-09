@@ -2,14 +2,21 @@ from __future__ import division
 import torch
 from torch import nn
 import torch.nn.functional as F
-from inverse_warp import inverse_warp2, inverse_warp
-import math
+from inverse_warp import inverse_warp2
+from utils import tensor2array
+# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+########################################################################################################################
+#
+# Structural Similarity Index Loss
+#
+########################################################################################################################
 
 
 class SSIM(nn.Module):
-    """Layer to compute the SSIM loss between a pair of images
+
+    """
+    Layer to compute the Structural Similarity Index (SSIM) loss between a pair of images.
     """
 
     def __init__(self):
@@ -42,38 +49,76 @@ class SSIM(nn.Module):
         return torch.clamp((1 - SSIM_n / SSIM_d) / 2, 0, 1)
 
 
-compute_ssim_loss = SSIM().to(device)
+# compute_ssim_loss = SSIM().to(device)
+compute_ssim_loss = SSIM()
+
+########################################################################################################################
+#
+# Other losses: Photometric loss, geometry consistency loss, etc.
+#
+########################################################################################################################
 
 
-# photometric loss
-# geometry consistency loss
-def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv, max_scales, with_ssim, with_mask, with_auto_mask, padding_mode):
+def compute_photo_and_geometry_loss(
+    tgt_img,
+    ref_imgs,
+    intrinsics,
+    tgt_depth,
+    ref_depths,
+    poses,
+    poses_inv,
+    max_scales,
+    with_ssim,
+    with_mask,
+    with_auto_mask,
+    padding_mode,
+    rotation_mode='euler',
+    writer_obj_tag='photo_geom_loss',
+    writer_obj_step=0,
+    writer_obj=None,
+    device=torch.device("cpu")
+):
+
+    """
+        Computes photometric and geometry consistency losses.
+
+        Parameters:
+        -----------
+
+        Returns:
+        --------
+            The photometric and geometry consistency losses (i.e., photo_loss, geometry_loss).
+    """
 
     photo_loss = 0
     geometry_loss = 0
 
     num_scales = min(len(tgt_depth), max_scales)
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Loop over the data...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Index for reference images.
+    ref_img_idx = 0
+
     for ref_img, ref_depth, pose, pose_inv in zip(ref_imgs, ref_depths, poses, poses_inv):
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Loop over scales.
+        # --------------------------------------------------------------------------------------------------------------
+
         for s in range(num_scales):
 
-            # # downsample img
-            # b, _, h, w = tgt_depth[s].size()
-            # downscale = tgt_img.size(2)/h
-            # if s == 0:
-            #     tgt_img_scaled = tgt_img
-            #     ref_img_scaled = ref_img
-            # else:
-            #     tgt_img_scaled = F.interpolate(tgt_img, (h, w), mode='area')
-            #     ref_img_scaled = F.interpolate(ref_img, (h, w), mode='area')
-            # intrinsic_scaled = torch.cat((intrinsics[:, 0:2]/downscale, intrinsics[:, 2:]), dim=1)
-            # tgt_depth_scaled = tgt_depth[s]
-            # ref_depth_scaled = ref_depth[s]
+            # ----------------------------------------------------------------------------------------------------------
+            # Upsample depth maps.
+            # ----------------------------------------------------------------------------------------------------------
 
-            # upsample depth
             b, _, h, w = tgt_img.size()
             tgt_img_scaled = tgt_img
             ref_img_scaled = ref_img
             intrinsic_scaled = intrinsics
+
             if s == 0:
                 tgt_depth_scaled = tgt_depth[s]
                 ref_depth_scaled = ref_depth[s]
@@ -81,58 +126,273 @@ def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, re
                 tgt_depth_scaled = F.interpolate(tgt_depth[s], (h, w), mode='nearest')
                 ref_depth_scaled = F.interpolate(ref_depth[s], (h, w), mode='nearest')
 
-            photo_loss1, geometry_loss1 = compute_pairwise_loss(tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose,
-                                                                intrinsic_scaled, with_ssim, with_mask, with_auto_mask, padding_mode)
-            photo_loss2, geometry_loss2 = compute_pairwise_loss(ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv,
-                                                                intrinsic_scaled, with_ssim, with_mask, with_auto_mask, padding_mode)
+            # ----------------------------------------------------------------------------------------------------------
+            # Show target and reference depth maps up to a scale.
+            # ----------------------------------------------------------------------------------------------------------
 
+            if writer_obj is not None and num_scales > 1:
+
+                _, h_scaled, w_scaled = tgt_depth_scaled[0].size()
+
+                writer_obj.add_image(
+                    tag='{}_depth_scales/target_ref_depth_scaled_{}_{}x{}'.format(writer_obj_tag, s, h_scaled, w_scaled),
+                    img_tensor=tensor2array(
+                        torch.cat([tgt_depth_scaled[0], ref_depth_scaled[0]], dim=2),
+                        max_value=None,
+                        colormap='magma'
+                    ),
+                    global_step=writer_obj_step
+                )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # Compute losses.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Computing the pairwise loss: Target w.r.t. reference data.
+            photo_loss1, geometry_loss1 = \
+                compute_pairwise_loss(
+                    tgt_img_scaled, ref_img_scaled,
+                    tgt_depth_scaled, ref_depth_scaled,
+                    pose, intrinsic_scaled,
+                    with_ssim, with_mask, with_auto_mask,
+                    padding_mode,
+                    rotation_mode=rotation_mode,
+                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref_data_{}'.format(writer_obj_tag, ref_img_idx),
+                    writer_obj_step=writer_obj_step,
+                    writer_obj=writer_obj,
+                    device=device,
+                )
+
+            # Computing the pairwise loss: Target w.r.t. reference data reversed.
+            photo_loss2, geometry_loss2 = \
+                compute_pairwise_loss(
+                    ref_img_scaled, tgt_img_scaled,
+                    ref_depth_scaled, tgt_depth_scaled,
+                    pose_inv, intrinsic_scaled,
+                    with_ssim, with_mask, with_auto_mask,
+                    padding_mode,
+                    rotation_mode=rotation_mode,
+                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref_data_{}_reversed'.format(writer_obj_tag, ref_img_idx),
+                    writer_obj_step=writer_obj_step,
+                    writer_obj=writer_obj,
+                    device=device,
+                )
+
+            # Photometric loss.
             photo_loss += (photo_loss1 + photo_loss2)
+
+            # Geometry consistency loss.
             geometry_loss += (geometry_loss1 + geometry_loss2)
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Reference image index...
+        # --------------------------------------------------------------------------------------------------------------
+
+        ref_img_idx += 1
 
     return photo_loss, geometry_loss
 
 
-def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsic, with_ssim, with_mask, with_auto_mask, padding_mode):
+def compute_pairwise_loss(
+    tgt_img,
+    ref_img,
+    tgt_depth,
+    ref_depth,
+    pose,
+    intrinsic,
+    with_ssim,
+    with_mask,
+    with_auto_mask,
+    padding_mode,
+    rotation_mode='euler',
+    writer_obj_tag='pairwise_loss',
+    writer_obj_step=0,
+    writer_obj=None,
+    device=torch.device("cpu"),
+):
 
-    ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp2(ref_img, tgt_depth, ref_depth, pose, intrinsic, padding_mode)
+    # ------------------------------------------------------------------------------------------------------------------
+    # Image synthesis...
+    # ------------------------------------------------------------------------------------------------------------------
 
+    ref_img_warped, valid_mask, projected_depth, computed_depth, pose_matrix_3x4 = \
+        inverse_warp2(
+            img=ref_img,
+            depth=tgt_depth,
+            ref_depth=ref_depth,
+            pose=pose,
+            intrinsics=intrinsic,
+            padding_mode=padding_mode,
+            rotation_mode=rotation_mode,
+        )
+
+    # Log data: Valid mask, reference image warped, and pose matrix...
+    if writer_obj is not None:
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Reference image warped...
+        # --------------------------------------------------------------------------------------------------------------
+
+        writer_obj.add_image(
+            tag='{}/target_and_ref_image_warped'.format(writer_obj_tag),
+            img_tensor=tensor2array(torch.cat([tgt_img[0], ref_img_warped[0]], dim=2)),
+            global_step=writer_obj_step
+        )
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Valid mask...
+        # --------------------------------------------------------------------------------------------------------------
+
+        writer_obj.add_image(
+            tag='{}/valid_mask'.format(writer_obj_tag),
+            img_tensor=valid_mask[0],
+            global_step=writer_obj_step
+        )
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Get translation vector and rotation matrix data.
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Batch sample idx...
+        sample_idx = 0
+
+        # Translation vector.
+        x = pose_matrix_3x4[sample_idx, 0, 3]
+        y = pose_matrix_3x4[sample_idx, 1, 3]
+        z = pose_matrix_3x4[sample_idx, 2, 3]
+
+        # Rotation matrix elements: Row 0.
+        r00 = pose_matrix_3x4[sample_idx, 0, 0]
+        r01 = pose_matrix_3x4[sample_idx, 0, 1]
+        r02 = pose_matrix_3x4[sample_idx, 0, 2]
+
+        # Rotation matrix elements: Row 1.
+        r10 = pose_matrix_3x4[sample_idx, 1, 0]
+        r11 = pose_matrix_3x4[sample_idx, 1, 1]
+        r12 = pose_matrix_3x4[sample_idx, 1, 2]
+
+        # Rotation matrix elements: Row 2.
+        r20 = pose_matrix_3x4[sample_idx, 2, 0]
+        r21 = pose_matrix_3x4[sample_idx, 2, 1]
+        r22 = pose_matrix_3x4[sample_idx, 2, 2]
+
+        rot_matrix_tvector_str = \
+            'Rot = {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f};  ' \
+            'X = {:0.4f}, {:0.4f}, {:0.4f}'.format(
+                r00, r01, r02,
+                r10, r11, r12,
+                r20, r21, r22,
+                x, y, z
+            )
+
+        writer_obj.add_text(
+            tag='{}/rotation_matrix_translation_vector'.format(writer_obj_tag),
+            text_string=rot_matrix_tvector_str,
+            global_step=writer_obj_step
+        )
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Photometric and geometry consistency losses.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Photometric loss.
     diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
 
+    # Geometry consistency loss.
     diff_depth = ((computed_depth - projected_depth).abs() / (computed_depth + projected_depth)).clamp(0, 1)
 
-    if with_auto_mask == True:
-        auto_mask = (diff_img.mean(dim=1, keepdim=True) < (tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float() * valid_mask
+    # Log data...
+    if writer_obj is not None:
+        writer_obj.add_image(
+            tag='{}/diff_depth'.format(writer_obj_tag),
+            img_tensor=diff_depth[0],
+            global_step=writer_obj_step
+        )
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Auto mask...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if with_auto_mask:
+
+        auto_mask =\
+            (
+                diff_img.mean(dim=1, keepdim=True) < (tgt_img - ref_img).abs().mean(dim=1, keepdim=True)
+            ).float() * valid_mask
+
         valid_mask = auto_mask
 
-    if with_ssim == True:
-        ssim_map = compute_ssim_loss(tgt_img, ref_img_warped)
+        # Log data...
+        if writer_obj is not None:
+            writer_obj.add_image(
+                tag='{}/auto_mask'.format(writer_obj_tag),
+                img_tensor=valid_mask[0],
+                global_step=writer_obj_step
+            )
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # SSIM Loss...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if with_ssim:
+
+        ssim_map = (compute_ssim_loss.to(device))(tgt_img, ref_img_warped)
         diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
-    if with_mask == True:
+    # ------------------------------------------------------------------------------------------------------------------
+    # Weight mask...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if with_mask:
+
         weight_mask = (1 - diff_depth)
         diff_img = diff_img * weight_mask
 
-    # compute all loss
-    reconstruction_loss = mean_on_mask(diff_img, valid_mask)
-    geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask)
+        # Log data...
+        if writer_obj is not None:
+            writer_obj.add_image(
+                tag='{}/weight_mask'.format(writer_obj_tag),
+                img_tensor=weight_mask[0],
+                global_step=writer_obj_step
+            )
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Flushes the event file to disk.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if writer_obj is not None:
+        writer_obj.flush()
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Compute reconstruction and geometry consistency losses...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    reconstruction_loss = mean_on_mask(diff_img, valid_mask, device=device)
+    geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask, device=device)
 
     return reconstruction_loss, geometry_consistency_loss
 
 
-# compute mean value given a binary mask
-def mean_on_mask(diff, valid_mask):
+def mean_on_mask(diff, valid_mask, device=torch.device("cpu")):
+
+    """ Compute mean value given a binary mask. """
+
     mask = valid_mask.expand_as(diff)
     if mask.sum() > 10000:
         mean_value = (diff * mask).sum() / mask.sum()
     else:
         mean_value = torch.tensor(0).float().to(device)
+
     return mean_value
 
 
 def compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs):
+
     def get_smooth_loss(disp, img):
-        """Computes the smoothness loss for a disparity image
-        The color image is used for edge-aware smoothness
+
+        """
+        Computes the smoothness loss for a disparity image.
+        The color image is used for edge-aware smoothness.
         """
 
         # normalize
@@ -164,12 +424,14 @@ def compute_errors(gt, pred, dataset):
     abs_diff, abs_rel, sq_rel, a1, a2, a3 = 0, 0, 0, 0, 0, 0
     batch_size, h, w = gt.size()
 
-    '''
-    crop used by Garg ECCV16 to reprocude Eigen NIPS14 results
+    """
+    Crop used by Garg ECCV16 to reprocude Eigen NIPS14 results
     construct a mask of False values, with the same size as target
     and then set to True values inside the crop
-    '''
+    """
+
     if dataset == 'kitti':
+
         crop_mask = gt[0] != gt[0]
         y1, y2 = int(0.40810811 * gt.size(1)), int(0.99189189 * gt.size(1))
         x1, x2 = int(0.03594771 * gt.size(2)), int(0.96405229 * gt.size(2))
@@ -177,6 +439,7 @@ def compute_errors(gt, pred, dataset):
         max_depth = 80
 
     if dataset == 'nyu':
+
         crop_mask = gt[0] != gt[0]
         y1, y2 = int(0.09375 * gt.size(1)), int(0.98125 * gt.size(1))
         x1, x2 = int(0.0640625 * gt.size(2)), int(0.9390625 * gt.size(2))
@@ -184,6 +447,7 @@ def compute_errors(gt, pred, dataset):
         max_depth = 10
 
     for current_gt, current_pred in zip(gt, pred):
+
         valid = (current_gt > 0.1) & (current_gt < max_depth)
         valid = valid & crop_mask
 

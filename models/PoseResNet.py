@@ -1,17 +1,16 @@
 # Copyright Niantic 2019. Patent Pending. All rights reserved.
-#
-# This software is licensed under the terms of the Monodepth2 licence
+# This software is licensed under the terms of the Monodepth-2 licence
 # which allows for non-commercial use only, the full terms of which are made
 # available in the LICENSE file.
-
 from __future__ import absolute_import, division, print_function
-
 import torch
 import torch.nn as nn
 from collections import OrderedDict
 from .resnet_encoder import *
 
+
 class PoseDecoder(nn.Module):
+
     def __init__(self, num_ch_enc, num_input_features=1, num_frames_to_predict_for=1, stride=1):
         super(PoseDecoder, self).__init__()
 
@@ -66,6 +65,7 @@ class PoseResNet(nn.Module):
         features = self.encoder(x)
         pose = self.decoder([features])
         return pose
+
 
 if __name__ == "__main__":
 
