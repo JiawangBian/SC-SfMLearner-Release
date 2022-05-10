@@ -1,9 +1,0 @@
-torch >= 1.5.1
-imageio
-matplotlib
-scipy
-argparse
-tensorboardX
-blessings
-progressbar2
-path
