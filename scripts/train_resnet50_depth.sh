@@ -2,10 +2,11 @@
 # Data paths...
 # ----------------------------------------------------------------------------------------------------------------------
 
-# Path where dataset is stored, e.g., DATA_ROOT="/nas/drives/yaak/yaak_dataset"
+# Path where dataset is stored. It must be defined by the user.
+# Default dataset location: "/nas/drives/yaak/yaak_dataset".
 DATA_ROOT="/nas/drives/yaak/yaak_dataset"
 
-# Path where experimental results will be stored.
+# Path where experimental results will be stored. It must be defined by the user.
 EXP_RESULTS_ROOT="/some_path/my_experiments"
 
 # Create the experimental results path.
@@ -36,11 +37,19 @@ PHOTO_LOSS_WEIGHT=1.0
 SMOOTH_LOSS_WEIGHT=0.1
 GEOM_CONSISTENCY_LOSS_WEIGHT=0.5
 
-# Video clip step, scaling factor, number of scales...
+# Video clip step (i.e., number of frames to skip between consecutive frames).
 VIDEO_CLIP_STEP=15
+
+# Frame scaling factor use: 0.25, 0.5, 0.75 or 1.0.
 FRAME_SCALING_FACTOR=0.25
-NUM_SCALES=2
+
+# Number of scales.
+NUM_SCALES=1
+
+# Rotation matrix representation.
 ROTATION_MATRIX_MODE="euler"
+
+# Padding mode.
 PADDING_MODE="zeros"
 
 # Print results frequency...
@@ -50,7 +59,10 @@ PRINT_FREQ=25
 # Camera views used for model training/validation.
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Camera view used as part of the training set.
 CAMERA_VIEW_TRAIN="cam_front_center"
+
+# Camera view as part of the validation set.
 CAMERA_VIEW_VAL="cam_front_center"
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -69,7 +81,10 @@ CAMERA_VIEW_VAL="cam_front_center"
 #
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Test drive ID used as training set.
 TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11"
+
+# Test drive ID used as validation set.
 TEST_DRIVE_ID_VAL="2021-08-13--09-27-11"
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -95,9 +110,10 @@ echo "- [ Test drive ID(s) | Model validation ] $TEST_DRIVE_ID_VAL"
 echo " "
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Train the network on the yaak dataset.
+# Train the network on the Yaak dataset.
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Set the variable CUDA_VISIBLE_DEVICES to any GPU device (default is 0).
 CUDA_VISIBLE_DEVICES=0 \
 python train_model.py \
 --dataset-path "$VIDEO_DATASET_PATH" \
