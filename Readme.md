@@ -1,8 +1,8 @@
-### Monocular depth estimation on the Yaak Dataset.
+### Monocular depth estimation on the Yaak Dataset
 
 #### Depth estimation technique
 
-The technique described in [1,2] was adapted to the Yaak dataset.
+The monocular depth estimation technique described in [1,2] was adapted to the Yaak dataset.
 
 References:
 1. Bian, Jiawang, Zhichao Li, Naiyan Wang, Huangying Zhan, Chunhua Shen, Ming-Ming Cheng, and Ian Reid. "Unsupervised scale-consistent depth and ego-motion learning from monocular video." Advances in neural information processing systems 32 (2019).
@@ -45,7 +45,7 @@ Notes:
 - The video sequences filenames with the suffix `-force-key.defish` correspond to undistorted video sequences, with corrected key frames. Such data is used to train the current models.
 - Speed data is loaded from the `metadata.json` file. This data is used for removing static scenes from the video sequences (currently, work in progress).
 
-#### Train the model.
+#### Train the model
 
 Before training the model, adjust model hyper-parameters and other options in the bash file `train_resnet50_depth.sh`.
 Also, you must specify where the dataset is located and where the experimental results will be stored in this script.
@@ -147,8 +147,11 @@ The contents of the bash file are shown below:
     # Experiments name, checkpoints path...
     # ------------------------------------------------------------------------------------------------------------------
     
+    # Experiment number.
+    EXP_NUMBER=0
+    
     # Experiment name.
-    EXPERIMENT_NAME="exp0_epochs_""$EPOCHS""_numScales_$NUM_SCALES""_frameScaleFactor_""$FRAME_SCALING_FACTOR"
+    EXPERIMENT_NAME="exp""$EXP_NUMBER""_epochs_""$EPOCHS""_numScales_$NUM_SCALES""_frameScaleFactor_""$FRAME_SCALING_FACTOR"
     EXPERIMENT_NAME+="_videoClipStep_""$VIDEO_CLIP_STEP""_batchSize_""$BATCH_SIZE""_rotMatrix_""$ROTATION_MATRIX_MODE""_pad_""$PADDING_MODE"
     
     # Checkpoints path.
@@ -165,9 +168,9 @@ The contents of the bash file are shown below:
     echo "- [ Test drive ID(s) | Model validation ] $TEST_DRIVE_ID_VAL"
     echo " "
     
-    # ----------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     # Train the network on the Yaak dataset.
-    # ----------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
     
     # Set the variable CUDA_VISIBLE_DEVICES to any GPU device (default is 0).
     CUDA_VISIBLE_DEVICES=0 \
@@ -206,7 +209,14 @@ The contents of the bash file are shown below:
 
 ```
 
-#### Tensorboard visualization.
+#### Possible issues during training.
+
+If an EOF error related to the `Decord` library (which is used to load video sequences directly into the GPU) occur, you may need to increase the value of the environment variable 
+`DECORD_EOF_RETRY_MAX`. For instance: `export DECORD_EOF_RETRY_MAX=200000480`. For more information about the issue, see the link below:
+
+- [Decord issues] (https://github.com/dmlc/decord/issues/156)
+
+#### Tensorboard visualization
 
 To monitor the model training and validation use `Tensorboard`.
 

@@ -91,8 +91,11 @@ TEST_DRIVE_ID_VAL="2021-08-13--09-27-11"
 # Experiments name, checkpoints path...
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Experiment number.
+EXP_NUMBER=0
+
 # Experiment name.
-EXPERIMENT_NAME="exp0_epochs_""$EPOCHS""_numScales_$NUM_SCALES""_frameScaleFactor_""$FRAME_SCALING_FACTOR"
+EXPERIMENT_NAME="exp""$EXP_NUMBER""_epochs_""$EPOCHS""_numScales_$NUM_SCALES""_frameScaleFactor_""$FRAME_SCALING_FACTOR"
 EXPERIMENT_NAME+="_videoClipStep_""$VIDEO_CLIP_STEP""_batchSize_""$BATCH_SIZE""_rotMatrix_""$ROTATION_MATRIX_MODE""_pad_""$PADDING_MODE"
 
 # Checkpoints path.
