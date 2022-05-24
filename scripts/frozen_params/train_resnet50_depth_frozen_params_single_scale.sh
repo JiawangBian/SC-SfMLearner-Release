@@ -42,12 +42,12 @@ PRETRAINED_MODEL_POSE="$PRETRAINED_MODEL_PATH/exp_pose_model_best.pth.tar"
 # ----------------------------------------------------------------------------------------------------------------------
 
 # Seed number.
-SEED_NUMBER=19052022
+SEED_NUMBER=12052022
 
 # Common training hyper-parameters.
-EPOCHS=25
-MAX_TRAIN_ITERATIONS=25
-MAX_VAL_ITERATIONS=5
+EPOCHS=50
+MAX_TRAIN_ITERATIONS=1250
+MAX_VAL_ITERATIONS=125
 BATCH_SIZE=1
 LR=1e-4
 MOMENTUM=0.9
@@ -55,7 +55,7 @@ BETA=0.999
 WEIGHT_DECAY=0
 
 # Initial model validation iterations...
-INITIAL_MODEL_VAL_ITERATIONS=5
+INITIAL_MODEL_VAL_ITERATIONS=30
 
 # Weight losses...
 PHOTO_LOSS_WEIGHT=1.0
@@ -66,7 +66,7 @@ GEOM_CONSISTENCY_LOSS_WEIGHT=0.5
 VIDEO_CLIP_STEP=10
 
 # Number of iterations to oversample each video in the training set.
-OVERSAMPLING_ITERATIONS_TRAIN=1
+OVERSAMPLING_ITERATIONS_TRAIN=500
 
 # Number of iterations to oversample each video in the validation set.
 OVERSAMPLING_ITERATIONS_VAL=1
@@ -102,43 +102,23 @@ CAMERA_VIEW_VAL="cam_front_center"
 # Test drive IDs used for model training/validation.
 #
 #
-#   Test drive ID             Is the video OK?
+# Test drive ID             Is the video OK?
 #
-#   2021-08-13--09-27-11      OK
-#   2021-09-10--13-58-21      The car is not moving most of the time.
-#   2021-10-13--06-30-56      OK
-#   2021-11-15--15-13-02      Although the car is moving most of the time, half of the scenes are very dark.
-#   2022-01-25--14-54-13      OK
-#   2022-01-28--13-15-40      OK
-#   2022-03-28--09-40-59      Remove - Reason: Metadata is corrupted.
-#
-# Exclude:
-#
-# 1) No metadata.json:
-#
-#   2022-02-25--14-42-58
-#   2022-03-11--14-36-45
-#   2022-03-28--09-40-59
-#   2022-04-07--11-15-26
-#   2022-04-13--11-10-16
-#
-# 2) No videos sequences (cam_front_center-force-key.defish.mp4, cam_front_center.defish.mp4):
-#
-#   2022-04-12--09-58-33
-#   2022-04-29--06-48-39
-#   2022-05-04--13-16-38
+# 2021-08-13--09-27-11      OK
+# 2021-09-10--13-58-21      The car is not moving most of the time.
+# 2021-10-13--06-30-56      OK
+# 2021-11-15--15-13-02      Although the car is moving most of the time, half of the scenes are very dark.
+# 2022-01-25--14-54-13      OK
+# 2022-01-28--13-15-40      OK
+# 2022-03-28--09-40-59      Remove - Reason: Metadata is corrupted.
 #
 # ----------------------------------------------------------------------------------------------------------------------
 
 # Test drive ID used as training set.
-# TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
-TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56"
-# TEST_DRIVE_ID_TRAIN="test_drive_ids/test_drive_ids_train.txt"
+TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
 
 # Test drive ID used as validation set.
-# TEST_DRIVE_ID_VAL="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
-TEST_DRIVE_ID_VAL="2021-08-13--09-27-11"
-# TEST_DRIVE_ID_VAL="test_drive_ids/test_drive_ids_val.txt"
+TEST_DRIVE_ID_VAL="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Parameters to be used to load telemetry data from the JSON files.
@@ -156,7 +136,7 @@ TELEMETRY_DATA_PARAMS_VAL='{"minimum_speed": 8.0, "camera_view": "cam_rear", "re
 # ----------------------------------------------------------------------------------------------------------------------
 
 # Device ID
-GPU_DEVICE_ID=1
+GPU_DEVICE_ID=0
 
 # Experiment number.
 EXP_NUMBER=0
@@ -166,14 +146,13 @@ EXPERIMENT_NAME="exp""$EXP_NUMBER"
 EXPERIMENT_NAME+="_epochs_""$EPOCHS""_numScales_$NUM_SCALES""_frameScaleFactor_""$FRAME_SCALING_FACTOR"
 EXPERIMENT_NAME+="_videoClipStep_""$VIDEO_CLIP_STEP""_batchSize_""$BATCH_SIZE""_rotMatrix_""$ROTATION_MATRIX_MODE"
 EXPERIMENT_NAME+="_pad_""$PADDING_MODE""_overSamplingIterTrain_""$OVERSAMPLING_ITERATIONS_TRAIN"
-EXPERIMENT_NAME+="_maxTrainIter_""$MAX_TRAIN_ITERATIONS""_maxValIter_""$MAX_VAL_ITERATIONS"
+EXPERIMENT_NAME+="_maxTrainIter_""$MAX_TRAIN_ITERATIONS""_maxValIter""$MAX_VAL_ITERATIONS"
 
 # Checkpoints path.
-CHECKPOINTS_PATH="$EXP_RESULTS_ROOT/tests_20.5.2022/checkpoints_r50_depth_trained_on_29_videos_20.5.2022_02"
+CHECKPOINTS_PATH="$EXP_RESULTS_ROOT/checkpoints_r50_depth_dynamic_scenes_oversampling_frozen_encoder_params_long_exp_16.5.2022"
 
 # Weights and biases project name.
-# WANDB_PROJECT_NAME="Exp_""$EXP_NUMBER""_withOverSampling_updateAllParams_singleScale_26videos"
-WANDB_PROJECT_NAME="None"
+WANDB_PROJECT_NAME="Exp_""$EXP_NUMBER""_overSampling_frozenEncoderParams_singleScale"
 
 echo "[ Train the depth estimation model (resnet50_depth_256) on the Yaak dataset ]"
 echo "- [ Model validation ] No ground-truth used for model validation (only losses)."
@@ -234,6 +213,5 @@ python train_model.py \
 --seed $SEED_NUMBER \
 --experiment-name "$EXPERIMENT_NAME" \
 --wandb-project-name "$WANDB_PROJECT_NAME" \
---initial-model-val-iterations $INITIAL_MODEL_VAL_ITERATIONS
-# --use-mask-static-objects-train
-# --freeze-disp-encoder-parameters
+--initial-model-val-iterations $INITIAL_MODEL_VAL_ITERATIONS \
+--freeze-disp-encoder-parameters

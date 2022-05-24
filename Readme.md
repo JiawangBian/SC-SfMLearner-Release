@@ -15,11 +15,14 @@ All the dependencies to run this code are provided in the file `environment.yml`
 
 #### Dataset
 
+##### Description
+
 The Yaak dataset is located in `/nas/drives/yaak/yaak_dataset/video_data/` and it consists videos sequences 
-(stored in MP4 format) and metadata files (i.e., metadata.log, metadata.json) recorded during each test drive 
+(stored in MP4 format) and telemetry data (i.e., stored in `metadata.log` and `metadata.json`) recorded during each test drive 
 (e.g., `test_drive_id`). Thus, data is organized as shown below:
 
 ```
+
     ├── test_drive_id
         ├── cam_front_center-force-key.defish.mp4
         ├── cam_front_center.defish.mp4
@@ -38,9 +41,22 @@ The Yaak dataset is located in `/nas/drives/yaak/yaak_dataset/video_data/` and i
         ├── cam_right_forward.mp4
         ├── metadata.json
         └── metadata.log
+
 ```
 
-Notes:
+The telemetry data is stored originally in binary files, i.e., `metadata.log`. Subsequently, it was converted 
+to the `JSON` format, resulting in the file `metadata.json`.
+
+##### Data acquisition: Sampling period and frequency
+
+Data samples were recorded at different frequencies (depending on the source of data and sensors used) as shown below:
+
+- GPS: GNSS data every 100ms / 10Hz
+- Doors: Vehicle state messages every 100ms / 10hz
+- Speed: Vehicle motion every 20ms / 50Hz
+- Videos: Camera messages every 33.333ms / 30Hz
+
+##### Notes
 
 - The video sequences filenames with the suffix `-force-key.defish` correspond to undistorted video sequences, with corrected key frames. Such data is used to train the current models.
 - Speed data is loaded from the `metadata.json` file. This data is used for removing static scenes from the video sequences (currently, work in progress).

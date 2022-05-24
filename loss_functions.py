@@ -157,7 +157,7 @@ def compute_photo_and_geometry_loss(
                     with_ssim, with_mask, with_auto_mask,
                     padding_mode,
                     rotation_mode=rotation_mode,
-                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref_data_{}'.format(writer_obj_tag, ref_img_idx),
+                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref{}'.format(writer_obj_tag, ref_img_idx),
                     writer_obj_step=writer_obj_step,
                     writer_obj=writer_obj,
                     device=device,
@@ -172,7 +172,7 @@ def compute_photo_and_geometry_loss(
                     with_ssim, with_mask, with_auto_mask,
                     padding_mode,
                     rotation_mode=rotation_mode,
-                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref_data_{}_reversed'.format(writer_obj_tag, ref_img_idx),
+                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref{}_reversed'.format(writer_obj_tag, ref_img_idx),
                     writer_obj_step=writer_obj_step,
                     writer_obj=writer_obj,
                     device=device,
@@ -240,6 +240,16 @@ def compute_pairwise_loss(
         )
 
         # --------------------------------------------------------------------------------------------------------------
+        # L1 loss between reference image warped...
+        # --------------------------------------------------------------------------------------------------------------
+
+        writer_obj.add_image(
+            tag='{}/diff_target_and_ref_image_warped'.format(writer_obj_tag),
+            img_tensor=tensor2array(torch.abs(tgt_img[0] - ref_img_warped[0])),
+            global_step=writer_obj_step
+        )
+
+        # --------------------------------------------------------------------------------------------------------------
         # Valid mask...
         # --------------------------------------------------------------------------------------------------------------
 
@@ -276,6 +286,7 @@ def compute_pairwise_loss(
         r21 = pose_matrix_3x4[sample_idx, 2, 1]
         r22 = pose_matrix_3x4[sample_idx, 2, 2]
 
+        # String representation of the rotation matrix.
         rot_matrix_tvector_str = \
             'Rot = {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f};  ' \
             'X = {:0.4f}, {:0.4f}, {:0.4f}'.format(

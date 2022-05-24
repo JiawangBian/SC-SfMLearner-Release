@@ -1,11 +1,12 @@
 import sys
 sys.path.insert(1, '/home/arturo/workspace/pycharm_projects/data_loader_ml/DataLoaderML')
+import wandb
 import os
+import json
 import argparse
 import time
 import csv
 import datetime
-from path import Path
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
@@ -13,9 +14,10 @@ import torch.optim
 import torch.utils.data
 import models
 import pandas as pd
-import yaak.tools.custom_transforms as CT
-from yaak.tools.dataset import YaakIterableDataset
-from utils import tensor2array, save_checkpoint, count_parameters, print_batch
+import data_loader_ml.tools.custom_transforms as CT
+from data_loader_ml.dataset import YaakIterableDataset
+from data_loader_ml.tools.utils import load_test_drive_ids_from_txt_file
+from utils import tensor2array, save_checkpoint, count_parameters, print_batch, normalize_image
 from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss
 from logger import TermLogger, AverageMeter
 from torch.utils.tensorboard import SummaryWriter
@@ -23,7 +25,7 @@ from torch.utils.tensorboard import SummaryWriter
 camera_view_choices = YaakIterableDataset.get_camera_view_choices() + ['all']
 
 parser = argparse.ArgumentParser(
-    description='Structure from Motion Learner -- Yaak Dataset 1.0',
+    description='Structure from Motion Learner -- Yaak Dataset 3.0 (Dynamic Scenes, Static Masks)',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 parser.add_argument('--dataset-path', dest='dataset_path', default=None, metavar='PATH',help='Path where the video sequences are stored in MP4 format (.mp4).')
@@ -36,6 +38,11 @@ parser.add_argument('--test-drive-id-val', type=str, default=None, help='Selecte
 parser.add_argument('--frame-scaling-factor', type=float, choices=[0.25, 0.5, 0.75, 1.0], default=0.5, metavar='M', help='Scaling factor applied to the frames along x and y axes.')
 parser.add_argument('--video-clip-length', type=int, metavar='N', help='Video clip length used for training the model.', default=3)
 parser.add_argument('--video-clip-step', type=int, metavar='N', help='Video clip step used for training the model.', default=1)
+parser.add_argument('--video-clip-fps', default=30, type=int, metavar='N', help='Video clip frames per second (fps).')
+parser.add_argument('--oversampling-iterations-train', default=1, type=int, metavar='N', help='Number of iterations to over-sample each video in the training set.')
+parser.add_argument('--oversampling-iterations-val', default=1, type=int, metavar='N', help='Number of iterations to over-sample each video in the validation set.')
+parser.add_argument('--telemetry-data-params-train', default='{"minimum_speed": 8.0, "camera_view": "cam_rear", "return_telemetry": "True"}', type=str, help='Parameters used to load telemetry data from the JSON files (e.g., metadata.json). This data is used in the training stage.')
+parser.add_argument('--telemetry-data-params-val', default='{"minimum_speed": 8.0, "camera_view": "cam_rear", "return_telemetry": "True"}', type=str, help='Parameters used to load telemetry data from the JSON files (e.g., metadata.json). This data is used in the validation stage.')
 parser.add_argument('-j', '--workers', default=0, type=int, metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='Number of total epochs.')
 parser.add_argument('--max-train-iterations', default=10, type=int, metavar='N', help='Maximum number of iterations in the training set per epoch.')
@@ -60,11 +67,15 @@ parser.add_argument('--with-ssim', type=int, default=1, help='With SSIM or not.'
 parser.add_argument('--with-mask', type=int, default=1, help='With the the mask for moving objects and occlusions or not.')
 parser.add_argument('--with-auto-mask', type=int,  default=0, help='With the the mask for stationary points.')
 parser.add_argument('--with-pretrain', type=int,  default=1, help='With or without imagenet pretrain for resnet.')
-parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='Path to pre-trained Dispnet model.')
-parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='Path to pre-trained Pose net model.')
-parser.add_argument('--name', dest='name', type=str, required=True, help='Name of the experiment, checkpoints are stored in checpoints/name.')
+parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='Path to pre-trained Disparity model.')
+parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='Path to pre-trained Pose model.')
+parser.add_argument('--freeze-disp-encoder-parameters', action='store_true', help='If enabled, the encoder parameters of the disparity network will not be updated during training.')
+parser.add_argument('--use-mask-static-objects-train', action='store_true', help='If enabled, a mask to select and suppress static objects will be used during training.')
+parser.add_argument('--initial-model-val-iterations', type=int,  default=0, help='Number of iterations to evaluate the model on the validation set before training.')
+parser.add_argument('--experiment-name', dest='experiment_name', type=str, required=True, help='Name of the experiment. Checkpoints are stored in checkpoints_path/experiment_name.')
+parser.add_argument('--wandb-project-name', type=str, default=None, help='Weights & Biases project name. If set to None, weights & biases will be disabled.')
 parser.add_argument('--rotation-matrix-mode', type=str, choices=['euler', 'quat'], default='euler', help='Rotation matrix representation.')
-parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros', help='Padding mode for '
+parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border', 'reflection'], default='zeros', help='Padding mode for '
     'image warping: this is important for photometric differenciation when going outside target image.'
     ' zeros will null gradients outside target image. border will only null gradients of the coordinate outside (x or y)'
 )
@@ -101,10 +112,14 @@ def main():
 
     # Time instant.
     timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
-    save_path = Path(args.name)
+
+    # Experiment name
+    experiment_name = '{}/frozen_disp_encoder_params'.format(args.experiment_name) \
+        if args.freeze_disp_encoder_parameters else '{}/optim_all_params'.format(args.experiment_name)
 
     # Path to save data.
-    args.save_path = '{}/{}/{}'.format(args.checkpoints_path, save_path, timestamp)
+    args.save_path = '{}/{}/{}'.format(args.checkpoints_path, experiment_name, timestamp)
+
     print('[ Experimental results ] Save path: {}'.format(args.save_path))
 
     # If the path does not exist, it is created.
@@ -116,6 +131,10 @@ def main():
     np.random.seed(args.seed)
     cudnn.deterministic = True
     cudnn.benchmark = True
+
+    # Check the value of the arguments pretrained_disp and pretrained_pose.
+    args.pretrained_disp = None if args.pretrained_disp == "None" else args.pretrained_disp
+    args.pretrained_pose = None if args.pretrained_pose == "None" else args.pretrained_pose
 
     # ------------------------------------------------------------------------------------------------------------------
     # Save hyper-parameters in CSV file.
@@ -133,6 +152,11 @@ def main():
         ('frame-scaling-factor', args.frame_scaling_factor),
         ('video-clip-length', args.video_clip_length),
         ('video-clip-step', args.video_clip_step),
+        ('video-clip-fps', args.video_clip_fps),
+        ('oversampling-iterations-train', args.oversampling_iterations_train),
+        ('oversampling-iterations-val', args.oversampling_iterations_val),
+        ('telemetry-data-params-train', args.telemetry_data_params_train),
+        ('telemetry-data-params-val', args.telemetry_data_params_val),
         ('workers', args.workers),
         ('epochs', args.epochs),
         ('max-train-iterations', args.max_train_iterations),
@@ -156,7 +180,11 @@ def main():
         ('pretrained-disp', args.pretrained_disp),
         ('pretrained-pose', args.pretrained_pose),
         ('padding_model', args.padding_mode),
-        ('name', args.name),
+        ('experiment_name', experiment_name),
+        ('wandb-project-name', args.wandb_project_name),
+        ('initial-model-val-iterations', args.initial_model_val_iterations),
+        ('freeze-disp-encoder-parameters', args.freeze_disp_encoder_parameters),
+        ('use-mask-static-objects-train', args.use_mask_static_objects_train)
     ]
 
     # Splits the hyperparameter names and values in two lists.
@@ -177,6 +205,36 @@ def main():
     hparams_df.to_csv( hparams_ffname, index=False)
 
     print('\n[ Hyper-parameters ] Save in: {}'.format(hparams_ffname))
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Init Weights & Biases...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    args.wandb_project_name = None if args.wandb_project_name == "None" else args.wandb_project_name
+
+    # Start a W & B run, passing `sync_tensorboard=True`, to plot your TensorBoard files
+    if args.wandb_project_name is not None:
+
+        # If the path does not exist, it is created.
+        wandb_path = "{:s}/{:s}".format(args.save_path, 'wandb')
+        if not os.path.exists(wandb_path):
+            os.makedirs(wandb_path)
+
+        # When using several event log directories,
+        # please call `wandb.tensorboard.patch(root_logdir="...")` before `wandb.init`
+        wandb.tensorboard.patch(root_logdir=args.save_path)
+
+        wandb.init(
+            dir=wandb_path,
+            config=dict(hparams_list),
+            project=args.wandb_project_name,
+            sync_tensorboard=True
+        )
+
+        print('[ Initializing Weights & Biases ]')
+        print('\t- Project name: {}'.format(args.wandb_project_name))
+        print('\t- Path: {}'.format(wandb_path))
+        print(' ')
 
     # ------------------------------------------------------------------------------------------------------------------
     # Summary writers...
@@ -201,11 +259,23 @@ def main():
     frame_scaling_factor = args.frame_scaling_factor
 
     # Frame crop size.
-    frame_crop_size = {
-        '0.25': (256, -1),
-        '0.50': (512, -1),
-        '0.75': (768, -1),
-        '1.00': (-1, -1),
+    # frame_crop_size = {
+    #     '0.25': (256, -1),
+    #     '0.50': (512, -1),
+    #     '0.75': (768, -1),
+    #     '1.00': (-1, -1),
+    # }
+
+    # Offsets and scales to resize and crop each frame.
+    frame_scale_offset_dict = {
+        # Frame resolution at 25%: 256x480
+        '0.25': {'scale_factor': 0.27, 'offset': (2, 33, 19, 19)},
+        # Frame resolution at 50%: 512x960
+        '0.50': {'scale_factor': 0.539, 'offset': (5, 65, 37, 37)},
+        # Frame resolution at 75%: 768x1440
+        '0.75': {'scale_factor': 0.809, 'offset': (8, 97, 56, 57)},
+        # Frame resolution at 100%: 1024x1920
+        '1.00': {'scale_factor': 1.079, 'offset': (10, 131, 75, 76)},
     }
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -220,9 +290,9 @@ def main():
 
     # Transformations applied on training data.
     train_transform = CT.Compose([
-        CT.ScaleCenterCrop(
-            crop_size=frame_crop_size['{:0.2f}'.format(frame_scaling_factor)],
-            scaling_factor=frame_scaling_factor
+        CT.ScaleCustomCrop(
+            offset=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['offset'],
+            scaling_factor=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['scale_factor'],
         ),
         CT.RandomHorizontalFlip(),
         CT.RandomScaleCrop(),
@@ -232,9 +302,9 @@ def main():
 
     # Transformations applied on validation data.
     val_transform = CT.Compose([
-        CT.ScaleCenterCrop(
-            crop_size=frame_crop_size['{:0.2f}'.format(frame_scaling_factor)],
-            scaling_factor=frame_scaling_factor
+        CT.ScaleCustomCrop(
+            offset=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['offset'],
+            scaling_factor=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['scale_factor'],
         ),
         CT.ToFloat32TensorCHW(),
         CT.Normalize(mean=mean_per_channel, std=std_per_channel)
@@ -254,16 +324,86 @@ def main():
     if args.dataset_name == 'yaak':
 
         # --------------------------------------------------------------------------------------------------------------
-        # Define which data should be returned by the data loader.
+        # Parameters to be used to load telemetry data from the JSON files.
         # --------------------------------------------------------------------------------------------------------------
 
-        return_data = (
-            ('processed_videos', True),
-            ('tgt_ref_frames', True),
-            ('telemetry', False),
-            ('camera_intrinsics', True),
-            ('camera_distortion', False),
-        )
+        # Parameters to be used to load telemetry data in the training stage.
+        tele_params_train_dict = json.loads(args.telemetry_data_params_train)
+
+        # Parameters to be used to load telemetry data in the validation stage.
+        tele_params_val_dict = json.loads(args.telemetry_data_params_val)
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Convert the value corresponding to the key 'return_telemetry' to boolean...
+        # --------------------------------------------------------------------------------------------------------------
+
+        assert 'return_telemetry' in tele_params_train_dict.keys(), \
+            '[ Error ] return_telemetry key is missing in tele_params_train_dict'
+
+        assert 'return_telemetry' in tele_params_val_dict.keys(), \
+            '[ Error ] return_telemetry key is missing in tele_params_val_dict'
+
+        tele_params_train_dict['return_telemetry'] = \
+            True if tele_params_train_dict['return_telemetry'] == "True" else False
+
+        tele_params_val_dict['return_telemetry'] = \
+            True if tele_params_val_dict['return_telemetry'] == "True" else False
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Show the contents to the telemetry data parameters dicts...
+        # --------------------------------------------------------------------------------------------------------------
+
+        print('\t- Parameters used to load telemetry data (training stage): ')
+        for k, v in tele_params_train_dict.items():
+            print('\t\t[ {} ] {}'.format(k, v))
+
+        print('\t- Parameters used to load telemetry data (validation stage):')
+        for k, v in tele_params_val_dict.items():
+            print('\t\t[ {} ] {}'.format(k, v))
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Create dictionaries of telemetry parameters to tbe passed to the YaakIterableDataset class.
+        # --------------------------------------------------------------------------------------------------------------
+
+        telemetry_data_params_dict = {
+            'train': (
+                ('minimum_speed', float(tele_params_train_dict['minimum_speed'])),
+                ('camera_view', str(tele_params_train_dict['camera_view']))
+            ),
+            'val': (
+                ('minimum_speed', float(tele_params_val_dict['minimum_speed'])),
+                ('camera_view', str(tele_params_val_dict['camera_view'])),
+            ),
+        }
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Define which data should be returned by the YaakIterableDataset class.
+        # --------------------------------------------------------------------------------------------------------------
+
+        if tele_params_train_dict['return_telemetry']:
+            print('\t- Telemetry data will be returned in the training stage.')
+
+        if tele_params_val_dict['return_telemetry']:
+            print('\t- Telemetry data will be returned in the validation stage.')
+
+        return_data_dict = {
+            'train': (
+                ('processed_videos', True),
+                ('tgt_ref_frames', True),
+                ('telemetry', tele_params_train_dict['return_telemetry']),
+                ('camera_intrinsics', True),
+                ('camera_distortion', False),
+                ('mask_static_objects', args.use_mask_static_objects_train),
+            ),
+            'val': (
+                ('processed_videos', True),
+                ('tgt_ref_frames', True),
+                ('telemetry', tele_params_val_dict['return_telemetry']),
+                ('camera_intrinsics', True),
+                ('camera_distortion', False),
+                ('mask_static_objects', False),
+            ),
+        }
 
         # --------------------------------------------------------------------------------------------------------------
         # Define the camera view for model training and validation.
@@ -278,10 +418,26 @@ def main():
         # Define test drive ids for model training and validation.
         # --------------------------------------------------------------------------------------------------------------
 
+        test_drive_id_train, test_drive_id_val = None, None
+
+        # Test drive IDs: Training set.
+        if args.test_drive_id_train.endswith(".txt"):
+            print('[ Loading test drive IDs from a TXT file ] Training set: \n')
+            test_drive_id_train = load_test_drive_ids_from_txt_file(fname=args.test_drive_id_train, verbose=True)
+        else:
+            test_drive_id_train = None if args.test_drive_id_train == "None" else args.test_drive_id_train
+
+        # Test drive IDs: Validation set.
+        if args.test_drive_id_val.endswith(".txt"):
+            print('[ Loading test drive IDs from a TXT file ] Validation set: \n')
+            test_drive_id_val = load_test_drive_ids_from_txt_file(fname=args.test_drive_id_val, verbose=True)
+        else:
+            test_drive_id_val = None if args.test_drive_id_val == "None" else args.test_drive_id_val
+
         # Dictionary of test drive IDs.
         test_drive_id_dict = {
-            'train': None if args.test_drive_id_train == "None" else args.test_drive_id_train,
-            'val': None if args.test_drive_id_val == "None" else args.test_drive_id_val,
+            'train': test_drive_id_train,
+            'val': test_drive_id_val,
         }
 
         # --------------------------------------------------------------------------------------------------------------
@@ -289,6 +445,11 @@ def main():
         # --------------------------------------------------------------------------------------------------------------
 
         print('\t- Creating the train dataset using the YaakIterableDataset class.')
+        print('\t\t- Every video in the training set will be over-sampled by N = {} iterations.'.format(
+                args.oversampling_iterations_train
+            )
+        )
+        print(' ')
 
         train_dataset = YaakIterableDataset(
             dataset_path=args.dataset_path,
@@ -296,15 +457,17 @@ def main():
             test_drive_id=test_drive_id_dict['train'],
             camera_view=camera_view_dict['train'],
             video_extension='mp4',
-            telemetry_filename='metadata.log',
+            telemetry_filename='metadata.json',
             video_clip_length=args.video_clip_length,
             video_clip_step=args.video_clip_step,
             video_clip_memory_format='default',
             video_clip_output_dtype='default',
+            video_clip_fps=args.video_clip_fps,
             frame_target_size=frame_target_size,
-            video_clip_fps=30.,
             processed_videos_filename_suffix='-force-key.defish',
-            return_data=return_data,
+            telemetry_data_params=telemetry_data_params_dict['train'],
+            oversampling_iterations=args.oversampling_iterations_train,
+            return_data=return_data_dict['train'],
             transform=train_transform,
             device_id=torch.cuda.current_device(),
             device_name='gpu' if torch.cuda.is_available() else 'cpu',
@@ -314,8 +477,13 @@ def main():
         # --------------------------------------------------------------------------------------------------------------
         # Create validation dataset.
         # --------------------------------------------------------------------------------------------------------------
-
+        print(' ')
         print('\t- Creating the validation dataset using the YaakIterableDataset class.')
+        print('\t\t- Every video in the validation set will be over-sampled by N = {} iterations.'.format(
+                args.oversampling_iterations_val
+            )
+        )
+        print(' ')
 
         val_dataset = YaakIterableDataset(
             dataset_path=args.dataset_path,
@@ -323,15 +491,17 @@ def main():
             test_drive_id=test_drive_id_dict['val'],
             camera_view=camera_view_dict['val'],
             video_extension='mp4',
-            telemetry_filename='metadata.log',
+            telemetry_filename='metadata.json',
             video_clip_length=args.video_clip_length,
             video_clip_step=args.video_clip_step,
             video_clip_memory_format='default',
             video_clip_output_dtype='default',
+            video_clip_fps=args.video_clip_fps,
             frame_target_size=frame_target_size,
-            video_clip_fps=30.,
             processed_videos_filename_suffix='-force-key.defish',
-            return_data=return_data,
+            telemetry_data_params=telemetry_data_params_dict['val'],
+            oversampling_iterations=args.oversampling_iterations_val,
+            return_data=return_data_dict['val'],
             transform=val_transform,
             device_id=torch.cuda.current_device(),
             device_name='gpu' if torch.cuda.is_available() else 'cpu',
@@ -371,11 +541,15 @@ def main():
     # Create models: Disparity and Pose networks.
     # ------------------------------------------------------------------------------------------------------------------
 
+    if args.with_pretrain:
+        print('\n[ The DispResNet/PoseResNet encoder network will be initialized with pretrained weights (ImageNet) ]')
+
     # Disparity network.
-    disp_net = models.DispResNet(args.resnet_layers, args.with_pretrain, verbose=False).to(device)
+    disp_net = \
+        models.DispResNet(num_layers=args.resnet_layers, pretrained=args.with_pretrain, verbose=False).to(device)
 
     # Pose network.
-    pose_net = models.PoseResNet(18, args.with_pretrain).to(device)
+    pose_net = models.PoseResNet(num_layers=18, pretrained=args.with_pretrain).to(device)
 
     print("\n[ Creating models ] Disparity (DispResNet) and Pose (PoseResNet) networks")
     print("\t- DispResNet (num_layers = {}, pretrain = {}) | Device = {}".format(
@@ -391,24 +565,81 @@ def main():
     )
 
     # ------------------------------------------------------------------------------------------------------------------
-    # Load pre-trained model parameters.
+    # Initialize DispResNet/PoseResNet networks with pre-trained weights stored on disk...
     # ------------------------------------------------------------------------------------------------------------------
 
-    # Load pre-trained disparity network parameters.
-    print('\n[ Load pretrained model parameters ]')
     if args.pretrained_disp:
-        print("\t- Using pre-trained weights for DispResNet.")
+        print('\n[ Initializing DispResNet network with pretrained weights stored on disk ]')
+        print("\t- File: {}".format(args.pretrained_disp))
         weights = torch.load(args.pretrained_disp)
         disp_net.load_state_dict(weights['state_dict'], strict=False)
+        print("\t- The model parameters have been updated.")
 
     # Load pre-trained pose network parameters.
     if args.pretrained_pose:
-        print("\t- Using pre-trained weights for PoseResNet.")
+        print('\n[ Initializing PoseResNet network with pretrained weights stored on disk ]')
+        print("\t- File: {}".format(args.pretrained_pose))
         weights = torch.load(args.pretrained_pose)
         pose_net.load_state_dict(weights['state_dict'], strict=False)
+        print("\t- The model parameters have been updated.")
 
     # ------------------------------------------------------------------------------------------------------------------
-    # Data parallelism...
+    # Count the number of parameters of the disparity and pose networks.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Disparity network parameters expressed in M.
+    disp_net_num_params = count_parameters(disp_net) / 1e6
+
+    # Pose network parameters in M.
+    pose_net_num_params = count_parameters(pose_net) / 1e6
+
+    print('\n[ Count model parameters ]')
+    print('\t- DispResNet | N = {:0.2f}M params'.format(disp_net_num_params))
+    print('\t- PoseResNet | N = {:0.2f}M params'.format(pose_net_num_params))
+
+    # Adding the disparity network parameter count to tensorboard.
+    training_writer.add_text(
+        tag='Parameter_count/disp_resnet',
+        text_string='{:0.2f}M'.format(disp_net_num_params),
+        global_step=0
+    )
+
+    # Adding the pose network parameter count to tensorboard.
+    training_writer.add_text(
+        tag='Parameter_count/pose_resnet',
+        text_string='{:0.2f}M'.format(pose_net_num_params),
+        global_step=0
+    )
+
+    training_writer.flush()
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Freezing the encoder parameters of the disparity network...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if args.freeze_disp_encoder_parameters:
+
+        print('\n[ Freezing the encoder parameters of the disparity network ]')
+
+        for param in disp_net.encoder.parameters():
+            param.requires_grad = False
+
+        # Disparity network parameters expressed in M.
+        disp_net_num_params = count_parameters(disp_net) / 1e6
+
+        print('\t- DispResNet | N = {:0.2f}M params'.format(disp_net_num_params))
+
+        # Adding the disparity network parameter count to tensorboard.
+        training_writer.add_text(
+            tag='Parameter_count/disp_resnet_with_frozen_enc',
+            text_string='{:0.2f}M'.format(disp_net_num_params),
+            global_step=0
+        )
+
+        training_writer.flush()
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Wrapping the models with torch.nn.DataParallel...
     # ------------------------------------------------------------------------------------------------------------------
 
     disp_net = torch.nn.DataParallel(disp_net, output_device=0)
@@ -430,32 +661,18 @@ def main():
     )
 
     # ------------------------------------------------------------------------------------------------------------------
-    # Count the number of disparity/pose model parameters.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # Disparity network parameters.
-    disp_net_num_params = count_parameters(disp_net)
-
-    # Pose network parameters.
-    pose_net_num_params = count_parameters(pose_net)
-
-    print('\n[ Count model parameters ]')
-    print('\t- DispResNet | N = {:0.2f}M params'.format(disp_net_num_params/1e6))
-    print('\t- PoseResNet | N = {:0.2f}M params'.format(pose_net_num_params/1e6))
-
-    # ------------------------------------------------------------------------------------------------------------------
     # Create optimizers for the Disparity and Pose networks.
     # ------------------------------------------------------------------------------------------------------------------
 
     print('\n[ Creating optimizers for the Disparity and Pose networks ] Optimizer = Adam')
 
-    # Parameters
+    # Selecting parameters to be optimized.
     optim_params = [
         {'params': disp_net.parameters(), 'lr': args.lr},
         {'params': pose_net.parameters(), 'lr': args.lr}
     ]
 
-    # Optimizer.
+    # Optimizer...
     optimizer = torch.optim.Adam(
         optim_params,
         betas=(args.momentum, args.beta),
@@ -486,17 +703,71 @@ def main():
 
     ####################################################################################################################
     #
-    # Training stage...
+    # Initial model evaluation...
     #
     ####################################################################################################################
 
-    print('\n[ Start model training ]...')
+    # ------------------------------------------------------------------------------------------------------------------
+    # Evaluate the model on the validation set before training...
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if args.initial_model_val_iterations > 0:
+
+        print('\n[ Evaluating the model on the validation set before training... ]')
+        print('[ Creating a logger for initial model evaluation) ]')
+
+        logger_init = TermLogger(
+            n_epochs=args.epochs,
+            train_size=0,
+            valid_size=args.initial_model_val_iterations,
+        )
+
+        logger_init.reset_valid_bar()
+        logger_init.valid_bar.update(0)
+
+        for val_index in range(args.initial_model_val_iterations):
+
+            errors, error_names = \
+                validate_without_gt(
+                    args=args,
+                    val_loader=val_loader,
+                    disp_net=disp_net,
+                    pose_net=pose_net,
+                    epoch=val_index,
+                    max_iterations=1,
+                    logger=logger_init,
+                    train_writer=training_writer,
+                    output_writers=output_writers,
+                    return_telemetry=tele_params_val_dict['return_telemetry'],
+                    show_progress_bar=True,
+                    initial_model_evaluation=True,
+                    device=device,
+                    verbose=False,
+                )
+
+            logger_init.valid_bar.update(val_index+1)
+
+            error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
+
+            logger_init.valid_writer.write(' * Avg {}'.format(error_string))
+
+            for error, name in zip(errors, error_names):
+                training_writer.add_scalar(name, error, val_index)
+
+        logger_init.valid_bar.update(args.initial_model_val_iterations)
+
+    ####################################################################################################################
+    #
+    # Training stage...
+    #
+    ####################################################################################################################
 
     # ------------------------------------------------------------------------------------------------------------------
     # Creating a Logger.
     # ------------------------------------------------------------------------------------------------------------------
 
-    print('\n[ Creating a Logger ]')
+    print('\n[ Start model training ] Epochs = {}'.format(args.epochs))
+    print('[ Creating a Logger ]')
 
     logger = TermLogger(
         n_epochs=args.epochs,
@@ -504,13 +775,15 @@ def main():
         valid_size=args.max_val_iterations,
     )
 
-    logger.epoch_bar.start()
-
     # ------------------------------------------------------------------------------------------------------------------
     # Start model training...
     # ------------------------------------------------------------------------------------------------------------------
 
-    for epoch in range(args.epochs):
+    init_epoch=0
+
+    logger.epoch_bar.start()
+
+    for epoch in range(init_epoch, args.epochs+init_epoch):
 
         logger.epoch_bar.update(epoch)
 
@@ -530,6 +803,7 @@ def main():
             max_iterations=args.max_train_iterations,
             logger=logger,
             train_writer=training_writer,
+            return_telemetry=tele_params_train_dict['return_telemetry'],
             show_progress_bar=True,
             device=device,
             verbose=(False, False)
@@ -554,7 +828,9 @@ def main():
                 logger=logger,
                 train_writer=training_writer,
                 output_writers=output_writers,
+                return_telemetry=tele_params_val_dict['return_telemetry'],
                 show_progress_bar=True,
+                initial_model_evaluation=False,
                 device=device,
                 verbose=False,
             )
@@ -610,14 +886,21 @@ def main():
 
     logger.epoch_bar.finish()
 
-    # --------------------------------------------------------------------------------------------------------------
-    # Closing operation...
-    # --------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+    # Closing operations...
+    # ------------------------------------------------------------------------------------------------------------------
 
     training_writer.close()
 
     for ow in output_writers:
         ow.close()
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Finish the wandb run to upload the TensorBoard logs to W & B.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if args.wandb_project_name is not None:
+        wandb.finish()
 
 
 def train(
@@ -630,6 +913,7 @@ def train(
     max_iterations,
     logger,
     train_writer,
+    return_telemetry=False,
     show_progress_bar=False,
     device=torch.device("cpu"),
     verbose=(False, False)
@@ -724,6 +1008,18 @@ def train(
         #       intrinsics = intrinsics.to(device)
         #
         intrinsics = batch['camera_intrinsics'].to(device)
+
+        # 4) Telemetry data: speed
+        #
+        speed_data = None
+        if return_telemetry:
+            speed_data = batch['telemetry_data/speed']
+
+        # 5) Camera view, test drive ID, video clip indices.
+        #
+        camera_view = batch['camera_view']
+        test_drive_id = batch['test_drive_id']
+        video_clip_indices = batch['video_clip_indices'].tolist()
 
         # --------------------------------------------------------------------------------------------------------------
         # Print essential information of the batch of data.
@@ -849,7 +1145,7 @@ def train(
 
                     # Show the components of the 6D pose vector in a plot.
                     train_writer.add_scalar(
-                        tag='Train_pose_target_wrt_ref_image_{:d}/{:s}'.format(img_idx, pose_var_name),
+                        tag='Train_pose_target_wrt_ref{:d}/{:s}'.format(img_idx, pose_var_name),
                         scalar_value=pose_var_value,
                         global_step=epoch
                     )
@@ -861,7 +1157,7 @@ def train(
 
                 # Show the components of the 6D pose vector as a string.
                 train_writer.add_text(
-                    tag='Train_pose_target_wrt_ref_image_{:d}/pose_vector_6d'.format(img_idx),
+                    tag='Train_pose_target_wrt_ref{:d}/pose_vector_6d'.format(img_idx),
                     text_string=pose_vector_str,
                     global_step=epoch
                 )
@@ -886,7 +1182,72 @@ def train(
         if i + 1 == max_iterations:
 
             # ----------------------------------------------------------------------------------------------------------
-            # 1) Training losses...
+            # 1) Intrinsic matrix.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Batch sample idx...
+            sample_idx = 0
+
+            # Intrinsic matrix elements: Row 0.
+            k00 = intrinsics[sample_idx, 0, 0]
+            k01 = intrinsics[sample_idx, 0, 1]
+            k02 = intrinsics[sample_idx, 0, 2]
+
+            # Intrinsic matrix elements: Row 1.
+            k10 = intrinsics[sample_idx, 1, 0]
+            k11 = intrinsics[sample_idx, 1, 1]
+            k12 = intrinsics[sample_idx, 1, 2]
+
+            # Intrinsic matrix elements: Row 2.
+            k20 = intrinsics[sample_idx, 2, 0]
+            k21 = intrinsics[sample_idx, 2, 1]
+            k22 = intrinsics[sample_idx, 2, 2]
+
+            # String representation of the intrinsic matrix.
+            k_matrix_str = \
+                'K = {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f}'.format(
+                    k00, k01, k02,
+                    k10, k11, k12,
+                    k20, k21, k22,
+                )
+
+            train_writer.add_text(
+                tag='Intrinsic_matrix/train',
+                text_string=k_matrix_str,
+                global_step=epoch
+            )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 2) Camera view, test drive, and video clip indices...
+            # ----------------------------------------------------------------------------------------------------------
+
+            video_clip_time = (
+                np.asarray(video_clip_indices) / float(args.video_clip_fps)
+            ).tolist()
+
+            video_clip_time_str = ['{:0.2f}'.format(t) for t in video_clip_time[0]]
+
+            video_clip_info = \
+                'test_drive_id = {} | camera_view = {} | video_clip_indices = {} | video_clip_time = {}'.format(
+                    test_drive_id[0],
+                    camera_view[0],
+                    video_clip_indices[0],
+                    video_clip_time_str
+                )
+
+            train_writer.add_text(tag='Video_clip_info/train', text_string=video_clip_info, global_step=epoch)
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 3) Speed data.
+            # ----------------------------------------------------------------------------------------------------------
+
+            if speed_data is not None and return_telemetry:
+                train_writer.add_scalar(
+                    tag='Telemetry_data/train_speed', scalar_value=speed_data[0], global_step=epoch
+                )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 4) Training losses...
             # ----------------------------------------------------------------------------------------------------------
 
             train_writer.add_scalar(
@@ -903,7 +1264,7 @@ def train(
             )
 
             # ----------------------------------------------------------------------------------------------------------
-            # 2) Image differences...
+            # 5) Image differences...
             # ----------------------------------------------------------------------------------------------------------
 
             # Image difference loss: | ref_image_0 - target_image |
@@ -914,79 +1275,115 @@ def train(
 
             # Image data...
             train_writer.add_image(
-                tag='Train_image_difference_ref0_target',
+                tag='Train_image_difference_map/ref0_target',
                 img_tensor=tensor2array(image_diff_loss_0, max_value=None, colormap='magma'),
                 global_step=epoch
             )
 
             train_writer.add_image(
-                tag='Train_image_difference_ref1_target',
+                tag='Train_image_difference_map/ref1_target',
                 img_tensor=tensor2array(image_diff_loss_1, max_value=None, colormap='magma'),
                 global_step=epoch
             )
 
             # Losses...
             train_writer.add_scalar(
-                tag='Train_image_difference/ref0_target',
+                tag='Train_image_difference_loss/ref0_target',
                 scalar_value=image_diff_loss_0.sum(),
                 global_step=epoch
             )
 
             train_writer.add_scalar(
-                tag='Train_image_difference/ref1_target',
+                tag='Train_image_difference_loss/ref1_target',
                 scalar_value=image_diff_loss_1.sum(),
                 global_step=epoch
             )
 
             # ----------------------------------------------------------------------------------------------------------
-            # 3) Image data...
+            # 6) Input image data...
             # ----------------------------------------------------------------------------------------------------------
 
-            # Input image.
+            # Reference and target frames.
             train_writer.add_image(
-                tag='Train_input',
+                tag='Train_model_input/ref0_target_ref1',
                 img_tensor=tensor2array(torch.cat([ref_imgs[0][0], tgt_img[0], ref_imgs[1][0]], dim=2)),
                 global_step=epoch
             )
 
-            # Estimated disparity map.
+            # Target frame.
             train_writer.add_image(
-                tag='Train_dispnet_output_normalized',
-                img_tensor=tensor2array(1. / tgt_depth[0][0], max_value=None, colormap='magma'),
+                tag='Train_model_output/input_target_frame',
+                img_tensor=tensor2array(tgt_img[0]),
                 global_step=epoch
             )
 
-            # Depth and disparity output:
+            # ----------------------------------------------------------------------------------------------------------
+            # 7. Depth and disparity.
             #
             #   - alpha = 100, beta = 0.01
             #   - Disparity:  D(x) = (alpha * x + beta)
             #   - Depth:      Z(x) = 1. / D(x)
             #
-            # Previous setting: max_value = tgt_depth[0][0].max().item()
-            #
-            beta_value = None
+            # ----------------------------------------------------------------------------------------------------------
 
-            # Estimated depth map.
+            # ----------------------------------------------------------------------------------------------------------
+            # 7.1. Disparity.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Estimated disparity map: Normalized w.r.t. maximum value.
             train_writer.add_image(
-                tag='Train_depth_output',
-                img_tensor=tensor2array(tgt_depth[0][0], max_value=beta_value, colormap='magma'),
+                tag='Train_model_output/disparity_normalized_wrt_max',
+                img_tensor=tensor2array(1. / tgt_depth[0][0], max_value=None, colormap='magma'),
+                global_step=epoch
+            )
+
+            # Estimated disparity map: Normalized to the range 0 to 1.
+            train_writer.add_image(
+                tag='Train_model_output/disparity_normalized_0_to_1',
+                img_tensor=normalize_image(1. / tgt_depth[0][0]),
                 global_step=epoch
             )
 
             # ----------------------------------------------------------------------------------------------------------
-            # 4) Histograms...
+            # 7.2. Depth.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Estimated depth map: Normalized w.r.t. maximum value.
+            train_writer.add_image(
+                tag='Train_model_output/depth_normalized_wrt_max',
+                img_tensor=tensor2array(tgt_depth[0][0], max_value=None, colormap='magma'),
+                global_step=epoch
+            )
+
+            # Estimated depth map: Normalized w.r.t. maximum value = 30.
+            beta_value = 10
+            train_writer.add_image(
+                tag='Train_model_output/depth_normalized_wrt_max_{:d}'.format(beta_value),
+                img_tensor=tensor2array(tgt_depth[0][0], max_value=beta_value, colormap='magma'),
+                global_step=epoch
+            )
+
+            # Estimated depth map: Normalized to the range 0 to 1.
+            train_writer.add_image(
+                tag='Train_model_output/depth_normalized_0_to_1',
+                img_tensor=normalize_image(tgt_depth[0][0]),
+                global_step=epoch
+            )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 8) Histograms...
             # ----------------------------------------------------------------------------------------------------------
 
             # Histogram of the estimated disparity map.
             train_writer.add_histogram(
-                tag='Train_histograms/Train_dispnet_output_normalized',
+                tag='Train_histograms/disparity',
                 values=1./tgt_depth[0][0],
                 global_step=epoch
             )
 
             # Histogram of the estimated depth map.
             train_writer.add_histogram(
-                tag='Train_histograms/Train_depth_output',
+                tag='Train_histograms/depth',
                 values=tgt_depth[0][0],
                 global_step=epoch
             )
@@ -1036,13 +1433,18 @@ def validate_without_gt(
     logger,
     train_writer,
     output_writers=[],
+    return_telemetry=False,
     show_progress_bar=False,
+    initial_model_evaluation=False,
     device=torch.device("cpu"),
     verbose=False,
 ):
     # ------------------------------------------------------------------------------------------------------------------
     # Initialization.
     # ------------------------------------------------------------------------------------------------------------------
+
+    # Prefix used to log data in tensorboard...
+    writer_prefix_tag = 'Val_init' if initial_model_evaluation else 'Val'
 
     # global device
     batch_time = AverageMeter()
@@ -1057,7 +1459,7 @@ def validate_without_gt(
     end = time.time()
 
     # Initialize progress bar.
-    if show_progress_bar:
+    if show_progress_bar and not initial_model_evaluation:
         logger.valid_bar.update(0)
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -1106,6 +1508,18 @@ def validate_without_gt(
         #
         intrinsics = batch['camera_intrinsics'].to(device)
 
+        # 4) Telemetry data: speed
+        #
+        speed_data = None
+        if return_telemetry:
+            speed_data = batch['telemetry_data/speed']
+
+        # 5) Camera view, test drive ID, video clip indices.
+        #
+        camera_view = batch['camera_view']
+        test_drive_id = batch['test_drive_id']
+        video_clip_indices = batch['video_clip_indices'].tolist()
+
         # --------------------------------------------------------------------------------------------------------------
         # Forward pass.
         # --------------------------------------------------------------------------------------------------------------
@@ -1127,7 +1541,78 @@ def validate_without_gt(
         if log_outputs and i < len(output_writers):
 
             # ----------------------------------------------------------------------------------------------------------
-            # Image differences...
+            # 1) Intrinsic matrix.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Batch sample idx...
+            sample_idx = 0
+
+            # Intrinsic matrix elements: Row 0.
+            k00 = intrinsics[sample_idx, 0, 0]
+            k01 = intrinsics[sample_idx, 0, 1]
+            k02 = intrinsics[sample_idx, 0, 2]
+
+            # Intrinsic matrix elements: Row 1.
+            k10 = intrinsics[sample_idx, 1, 0]
+            k11 = intrinsics[sample_idx, 1, 1]
+            k12 = intrinsics[sample_idx, 1, 2]
+
+            # Intrinsic matrix elements: Row 2.
+            k20 = intrinsics[sample_idx, 2, 0]
+            k21 = intrinsics[sample_idx, 2, 1]
+            k22 = intrinsics[sample_idx, 2, 2]
+
+            # String representation of the intrinsic matrix.
+            k_matrix_str = \
+                'K = {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f} | {:0.4f}, {:0.4f}, {:0.4f}'.format(
+                    k00, k01, k02,
+                    k10, k11, k12,
+                    k20, k21, k22,
+                )
+
+            output_writers[i].add_text(
+                tag='Intrinsic_matrix/{:s}_{:d}'.format(writer_prefix_tag.lower(), i),
+                text_string=k_matrix_str,
+                global_step=epoch
+            )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 2) Camera view, test drive, and video clip indices...
+            # ----------------------------------------------------------------------------------------------------------
+
+            video_clip_time = (
+                    np.asarray(video_clip_indices) / float(args.video_clip_fps)
+            ).tolist()
+
+            video_clip_time_str = ['{:0.2f}'.format(t) for t in video_clip_time[0]]
+
+            video_clip_info = \
+                'test_drive_id = {} | camera_view = {} | video_clip_indices = {} | video_clip_time = {}'.format(
+                    test_drive_id[0],
+                    camera_view[0],
+                    video_clip_indices[0],
+                    video_clip_time_str
+                )
+
+            output_writers[i].add_text(
+                tag='Video_clip_info/{:s}_{:d}'.format(writer_prefix_tag.lower(), i),
+                text_string=video_clip_info,
+                global_step=epoch
+            )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 3) Log speed data.
+            # ----------------------------------------------------------------------------------------------------------
+
+            if speed_data is not None and return_telemetry:
+                output_writers[i].add_scalar(
+                    tag='Telemetry_data/{:s}_{:d}_speed'.format(writer_prefix_tag.lower(), i),
+                    scalar_value=speed_data[0],
+                    global_step=epoch,
+                )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 4) Image differences...
             # ----------------------------------------------------------------------------------------------------------
 
             # Image difference loss: | ref_image_0 - target_image |
@@ -1138,79 +1623,115 @@ def validate_without_gt(
 
             # Image data...
             output_writers[i].add_image(
-                tag='Val_image_difference_ref0_target',
+                tag='{:s}_{:d}_image_difference_map/ref0_target'.format(writer_prefix_tag, i),
                 img_tensor=tensor2array(image_diff_loss_0, max_value=None, colormap='magma'),
                 global_step=epoch
             )
 
             output_writers[i].add_image(
-                tag='Val_image_difference_ref1_target',
+                tag='{:s}_{:d}_image_difference_map/ref1_target'.format(writer_prefix_tag, i),
                 img_tensor=tensor2array(image_diff_loss_1, max_value=None, colormap='magma'),
                 global_step=epoch
             )
 
             # Losses...
             output_writers[i].add_scalar(
-                tag='Val_image_difference_{}/ref0_target'.format(i),
+                tag='{:s}_{:d}_image_difference_loss/ref0_target'.format(writer_prefix_tag, i),
                 scalar_value=image_diff_loss_0.sum(),
                 global_step=epoch
             )
 
             output_writers[i].add_scalar(
-                tag='Val_image_difference_{}/ref1_target'.format(i),
+                tag='{:s}_{:d}_image_difference_loss/ref1_target'.format(writer_prefix_tag, i),
                 scalar_value=image_diff_loss_1.sum(),
                 global_step=epoch
             )
 
             # ----------------------------------------------------------------------------------------------------------
-            # Image data...
+            # 5) Input image data...
             # ----------------------------------------------------------------------------------------------------------
 
-            # Input image.
+            # Reference and target frames.
             output_writers[i].add_image(
-                tag='Val_input',
+                tag='{:s}_{:d}_model_input/ref0_target_ref1'.format(writer_prefix_tag, i),
                 img_tensor=tensor2array(torch.cat([ref_imgs[0][0], tgt_img[0], ref_imgs[1][0]], dim=2)),
                 global_step=epoch
             )
 
-            # Estimated disparity map.
+            # Target frane.
             output_writers[i].add_image(
-                tag='Val_dispnet_output_normalized',
-                img_tensor=tensor2array(1./tgt_depth[0][0], max_value=None, colormap='magma'),
+                tag='{:s}_{:d}_model_output/input_target_frame'.format(writer_prefix_tag, i),
+                img_tensor=tensor2array(tgt_img[0]),
                 global_step=epoch
             )
 
-            # Depth and disparity output:
+            # ----------------------------------------------------------------------------------------------------------
+            # 6. Depth and disparity.
             #
             #   - alpha = 100, beta = 0.01
             #   - Disparity:  D(x) = (alpha * x + beta)
             #   - Depth:      Z(x) = 1. / D(x)
             #
-            # Previous setting: max_value = tgt_depth[0][0].max().item()
-            #
-            beta_value = None
+            # ----------------------------------------------------------------------------------------------------------
 
-            # Estimated depth map.
+            # ----------------------------------------------------------------------------------------------------------
+            # 6.1. Disparity.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Estimated disparity map: Normalized w.r.t. maximum value.
             output_writers[i].add_image(
-                tag='Val_depth_output',
-                img_tensor=tensor2array(tgt_depth[0][0], max_value=beta_value, colormap='magma'),
+                tag='{:s}_{:d}_model_output/disparity_normalized_wrt_max'.format(writer_prefix_tag, i),
+                img_tensor=tensor2array(1. / tgt_depth[0][0], max_value=None, colormap='magma'),
+                global_step=epoch
+            )
+
+            # Estimated disparity map: Normalized to the range 0 to 1.
+            output_writers[i].add_image(
+                tag='{:s}_{:d}_model_output/disparity_normalized_0_to_1'.format(writer_prefix_tag, i),
+                img_tensor=normalize_image(1. / tgt_depth[0][0]),
                 global_step=epoch
             )
 
             # ----------------------------------------------------------------------------------------------------------
-            # Histograms...
+            # 6.2. Depth.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Estimated depth map: Normalized w.r.t. maximum value.
+            output_writers[i].add_image(
+                tag='{:s}_{:d}_model_output/depth_normalized_wrt_max'.format(writer_prefix_tag, i),
+                img_tensor=tensor2array(tgt_depth[0][0], max_value=None, colormap='magma'),
+                global_step=epoch
+            )
+
+            # Estimated depth map: Normalized w.r.t. maximum value = 30.
+            beta_value = 10
+            output_writers[i].add_image(
+                tag='{:s}_{:d}_model_output/depth_normalized_wrt_max_{:d}'.format(writer_prefix_tag, i, beta_value),
+                img_tensor=tensor2array(tgt_depth[0][0], max_value=beta_value, colormap='magma'),
+                global_step=epoch
+            )
+
+            # Estimated depth map: Normalized to the range 0 to 1.
+            output_writers[i].add_image(
+                tag='{:s}_{:d}_model_output/depth_normalized_0_to_1'.format(writer_prefix_tag, i),
+                img_tensor=normalize_image(tgt_depth[0][0]),
+                global_step=epoch
+            )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 7) Histograms...
             # ----------------------------------------------------------------------------------------------------------
 
             # Histogram of the estimated disparity map.
             output_writers[i].add_histogram(
-                tag='Val_histograms/Val_dispnet_output_normalized_{:d}'.format(i),
+                tag='{:s}_{:d}_histograms/disparity'.format(writer_prefix_tag, i),
                 values=1./tgt_depth[0][0],
                 global_step=epoch
             )
 
             # Histogram of the estimated depth map.
             output_writers[i].add_histogram(
-                tag='Val_histograms/Val_depth_output_{:d}'.format(i),
+                tag='{:s}_{:d}_histograms/depth'.format(writer_prefix_tag, i),
                 values=tgt_depth[0][0],
                 global_step=epoch
             )
@@ -1245,7 +1766,7 @@ def validate_without_gt(
             with_auto_mask=False,
             padding_mode=args.padding_mode,
             rotation_mode=args.rotation_matrix_mode,
-            writer_obj_tag='Val',
+            writer_obj_tag='{:s}_{:d}'.format(writer_prefix_tag, i),
             writer_obj_step=epoch,
             writer_obj=output_writers[i] if log_outputs and i < len(output_writers) else None,
             device=device
@@ -1275,7 +1796,7 @@ def validate_without_gt(
         # Update logger...
         # --------------------------------------------------------------------------------------------------------------
 
-        if show_progress_bar:
+        if show_progress_bar and not initial_model_evaluation:
             logger.valid_bar.update(i+1)
 
         if (i+1) % args.print_freq == 0:
@@ -1305,7 +1826,11 @@ def validate_without_gt(
 
                     # Show the components of the 6D pose vector in a plot.
                     train_writer.add_scalar(
-                        tag='Val_pose_target_wrt_ref_image_{:d}/{:s}'.format(img_idx, pose_var_name),
+                        tag='{:s}_{:d}_pose_target_wrt_ref{:d}/{:s}'.format(
+                            writer_prefix_tag, i,
+                            img_idx,
+                            pose_var_name
+                        ),
                         scalar_value=pose_var_value,
                         global_step=epoch
                     )
@@ -1317,13 +1842,22 @@ def validate_without_gt(
                         pose_vector_str += "{:s} = {:0.4f}".format(pose_var_name, pose_var_value)
 
                 train_writer.add_text(
-                    tag='Val_pose_target_wrt_ref_image_{:d}/pose_vector_6d'.format(img_idx),
+                    tag='{:s}_{:d}_pose_target_wrt_ref{:d}/pose_vector_6d'.format(writer_prefix_tag, i, img_idx),
                     text_string=pose_vector_str,
                     global_step=epoch
                 )
 
             # Flushes the event file to disk.
             train_writer.flush()
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Flushes the event file to disk.
+        # --------------------------------------------------------------------------------------------------------------
+
+        train_writer.flush()
+
+        for ow in output_writers:
+            ow.flush()
 
         # --------------------------------------------------------------------------------------------------------------
         # Condition to break the loop:
@@ -1340,27 +1874,18 @@ def validate_without_gt(
 
         i += 1
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Flushes the event file to disk.
-        # --------------------------------------------------------------------------------------------------------------
-
-        train_writer.flush()
-
-        for ow in output_writers:
-            ow.flush()
-
     # ------------------------------------------------------------------------------------------------------------------
     # Updates progress bar.
     # ------------------------------------------------------------------------------------------------------------------
 
-    if show_progress_bar:
+    if show_progress_bar and not initial_model_evaluation:
         logger.valid_bar.update(max_iterations)
 
     return losses.avg, [
-        'Val_loss/total_loss',
-        'Val_loss/photometric_loss',
-        'Val_loss/disparity_smoothness_loss',
-        'Val_loss/geometry_consistency_loss'
+        '{:s}_loss/total_loss'.format(writer_prefix_tag),
+        '{:s}_loss/photometric_loss'.format(writer_prefix_tag),
+        '{:s}_loss/disparity_smoothness_loss'.format(writer_prefix_tag),
+        '{:s}_loss/geometry_consistency_loss'.format(writer_prefix_tag),
     ]
 
 

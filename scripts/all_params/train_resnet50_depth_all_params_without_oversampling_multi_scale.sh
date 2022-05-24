@@ -13,7 +13,7 @@ export DECORD_EOF_RETRY_MAX=200000480
 DATA_ROOT="/nas/drives/yaak/yaak_dataset"
 
 # Path where experimental results are stored.
-EXP_RESULTS_ROOT="/nas/team-space/arturo/experimental_results/depth_estimation/sc_sfmlearner_yaak_data"
+EXP_RESULTS_ROOT="/nas/team-space/arturo/experimental_results/depth_estimation/sc_sfmlearner_yaak_data/marvin_server"
 
 # Create the experimental results path.
 mkdir -p "$EXP_RESULTS_ROOT"
@@ -45,9 +45,9 @@ PRETRAINED_MODEL_POSE="$PRETRAINED_MODEL_PATH/exp_pose_model_best.pth.tar"
 SEED_NUMBER=19052022
 
 # Common training hyper-parameters.
-EPOCHS=25
-MAX_TRAIN_ITERATIONS=25
-MAX_VAL_ITERATIONS=5
+EPOCHS=50
+MAX_TRAIN_ITERATIONS=1250
+MAX_VAL_ITERATIONS=125
 BATCH_SIZE=1
 LR=1e-4
 MOMENTUM=0.9
@@ -55,7 +55,7 @@ BETA=0.999
 WEIGHT_DECAY=0
 
 # Initial model validation iterations...
-INITIAL_MODEL_VAL_ITERATIONS=5
+INITIAL_MODEL_VAL_ITERATIONS=30
 
 # Weight losses...
 PHOTO_LOSS_WEIGHT=1.0
@@ -75,7 +75,7 @@ OVERSAMPLING_ITERATIONS_VAL=1
 FRAME_SCALING_FACTOR=0.5
 
 # Number of scales.
-NUM_SCALES=1
+NUM_SCALES=2
 
 # Rotation matrix representation. Use: "euler", "quat".
 ROTATION_MATRIX_MODE="euler"
@@ -132,13 +132,13 @@ CAMERA_VIEW_VAL="cam_front_center"
 
 # Test drive ID used as training set.
 # TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
-TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56"
-# TEST_DRIVE_ID_TRAIN="test_drive_ids/test_drive_ids_train.txt"
+# TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56"
+TEST_DRIVE_ID_TRAIN="test_drive_ids/test_drive_ids_train.txt"
 
 # Test drive ID used as validation set.
 # TEST_DRIVE_ID_VAL="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
-TEST_DRIVE_ID_VAL="2021-08-13--09-27-11"
-# TEST_DRIVE_ID_VAL="test_drive_ids/test_drive_ids_val.txt"
+# TEST_DRIVE_ID_VAL="2021-08-13--09-27-11"
+TEST_DRIVE_ID_VAL="test_drive_ids/test_drive_ids_val.txt"
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Parameters to be used to load telemetry data from the JSON files.
@@ -156,7 +156,7 @@ TELEMETRY_DATA_PARAMS_VAL='{"minimum_speed": 8.0, "camera_view": "cam_rear", "re
 # ----------------------------------------------------------------------------------------------------------------------
 
 # Device ID
-GPU_DEVICE_ID=1
+GPU_DEVICE_ID=0
 
 # Experiment number.
 EXP_NUMBER=0
@@ -169,11 +169,11 @@ EXPERIMENT_NAME+="_pad_""$PADDING_MODE""_overSamplingIterTrain_""$OVERSAMPLING_I
 EXPERIMENT_NAME+="_maxTrainIter_""$MAX_TRAIN_ITERATIONS""_maxValIter_""$MAX_VAL_ITERATIONS"
 
 # Checkpoints path.
-CHECKPOINTS_PATH="$EXP_RESULTS_ROOT/tests_20.5.2022/checkpoints_r50_depth_trained_on_29_videos_20.5.2022_02"
+CHECKPOINTS_PATH="$EXP_RESULTS_ROOT/tests_23.5.2022/checkpoints_r50_depth_trained_on_29_videos_long_experiments_23.5.2022"
 
 # Weights and biases project name.
-# WANDB_PROJECT_NAME="Exp_""$EXP_NUMBER""_withOverSampling_updateAllParams_singleScale_26videos"
-WANDB_PROJECT_NAME="None"
+WANDB_PROJECT_NAME="Exp_""$EXP_NUMBER""_withoutOverSampling_updateAllParams_multiScale_29_videos"
+# WANDB_PROJECT_NAME="None"
 
 echo "[ Train the depth estimation model (resnet50_depth_256) on the Yaak dataset ]"
 echo "- [ Model validation ] No ground-truth used for model validation (only losses)."
@@ -235,5 +235,3 @@ python train_model.py \
 --experiment-name "$EXPERIMENT_NAME" \
 --wandb-project-name "$WANDB_PROJECT_NAME" \
 --initial-model-val-iterations $INITIAL_MODEL_VAL_ITERATIONS
-# --use-mask-static-objects-train
-# --freeze-disp-encoder-parameters

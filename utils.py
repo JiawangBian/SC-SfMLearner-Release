@@ -40,19 +40,60 @@ COLORMAPS = {'rainbow': opencv_rainbow(),
 
 
 def tensor2array(tensor, max_value=None, colormap='rainbow'):
+
     tensor = tensor.detach().cpu()
+
     if max_value is None:
         max_value = tensor.max().item()
+
     if tensor.ndimension() == 2 or tensor.size(0) == 1:
+
         norm_array = tensor.squeeze().numpy()/max_value
         array = COLORMAPS[colormap](norm_array).astype(np.float32)
         array = array.transpose(2, 0, 1)
 
     elif tensor.ndimension() == 3:
+
         assert(tensor.size(0) == 3)
         array = 0.45 + tensor.numpy()*0.225
+
     return array
 
+
+def normalize_image(x):
+
+    """
+
+    Rescale image pixels to span range [0, 1].
+    - From: https://github.com/nianticlabs/monodepth2.
+
+    """
+
+    ma = float(x.max().cpu().data)
+    mi = float(x.min().cpu().data)
+
+    d = ma - mi if ma != mi else 1e5
+
+    return (x - mi) / d
+
+
+def disp_to_depth(disp, min_depth, max_depth):
+
+    """
+
+    Convert network's sigmoid output into depth prediction
+    The formula for this conversion is given in the 'additional considerations'
+    section of the paper.
+
+    From: https://github.com/nianticlabs/monodepth2
+
+    """
+    min_disp = 1 / max_depth
+    max_disp = 1 / min_depth
+    scaled_disp = min_disp + (max_disp - min_disp) * disp
+    depth = 1 / scaled_disp
+
+    return scaled_disp, depth
 
 def save_checkpoint(save_path, dispnet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
 
