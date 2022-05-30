@@ -2,7 +2,6 @@ import sys
 sys.path.insert(1, '/home/arturo/workspace/pycharm_projects/data_loader_ml/DataLoaderML')
 import wandb
 import os
-import json
 import argparse
 import time
 import csv
@@ -13,78 +12,61 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
 import models
-import pandas as pd
-import data_loader_ml.tools.custom_transforms as CT
+import toml
+from pathlib import Path
 from data_loader_ml.dataset import YaakIterableDataset
-from data_loader_ml.tools.utils import load_test_drive_ids_from_txt_file
+from data_loader_ml.tools.custom_transforms import Compose, TRANSFORM_DICT
 from utils import tensor2array, save_checkpoint, count_parameters, print_batch, normalize_image
+from utils import get_hyperparameters_dict
 from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss
 from logger import TermLogger, AverageMeter
 from torch.utils.tensorboard import SummaryWriter
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
-camera_view_choices = YaakIterableDataset.get_camera_view_choices() + ['all']
 
 parser = argparse.ArgumentParser(
-    description='Structure from Motion Learner -- Yaak Dataset 3.0 (Dynamic Scenes, Static Masks)',
+    description='Train the SfM learner model on the Yaak dataset using an efficient data loader.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
-parser.add_argument('--dataset-path', dest='dataset_path', default=None, metavar='PATH',help='Path where the video sequences are stored in MP4 format (.mp4).')
-parser.add_argument('--cam-calib-path', dest='cam_calib_path', default=None, metavar='PATH',help='Path where the camera calibration files are stored in JSON format (e.g., path/calib.json).')
-parser.add_argument('--dataset-name', type=str, choices=['yaak'], default='yaak', help='Path to the dataset (i.e., video sequences).')
-parser.add_argument('--camera-view-train', type=str, choices=camera_view_choices, default='cam_front_center', help='Selected camera view(s) for model training.')
-parser.add_argument('--camera-view-val', type=str, choices=camera_view_choices, default='cam_front_center', help='Selected camera view(s) for model validation.')
-parser.add_argument('--test-drive-id-train', type=str, default=None, help='Selected test drive ID(s) for model training.')
-parser.add_argument('--test-drive-id-val', type=str, default=None, help='Selected test drive ID(s) for model validation.')
-parser.add_argument('--frame-scaling-factor', type=float, choices=[0.25, 0.5, 0.75, 1.0], default=0.5, metavar='M', help='Scaling factor applied to the frames along x and y axes.')
-parser.add_argument('--video-clip-length', type=int, metavar='N', help='Video clip length used for training the model.', default=3)
-parser.add_argument('--video-clip-step', type=int, metavar='N', help='Video clip step used for training the model.', default=1)
-parser.add_argument('--video-clip-fps', default=30, type=int, metavar='N', help='Video clip frames per second (fps).')
-parser.add_argument('--oversampling-iterations-train', default=1, type=int, metavar='N', help='Number of iterations to over-sample each video in the training set.')
-parser.add_argument('--oversampling-iterations-val', default=1, type=int, metavar='N', help='Number of iterations to over-sample each video in the validation set.')
-parser.add_argument('--telemetry-data-params-train', default='{"minimum_speed": 8.0, "camera_view": "cam_rear", "return_telemetry": "True"}', type=str, help='Parameters used to load telemetry data from the JSON files (e.g., metadata.json). This data is used in the training stage.')
-parser.add_argument('--telemetry-data-params-val', default='{"minimum_speed": 8.0, "camera_view": "cam_rear", "return_telemetry": "True"}', type=str, help='Parameters used to load telemetry data from the JSON files (e.g., metadata.json). This data is used in the validation stage.')
-parser.add_argument('-j', '--workers', default=0, type=int, metavar='N', help='number of data loading workers')
-parser.add_argument('--epochs', default=200, type=int, metavar='N', help='Number of total epochs.')
-parser.add_argument('--max-train-iterations', default=10, type=int, metavar='N', help='Maximum number of iterations in the training set per epoch.')
-parser.add_argument('--max-val-iterations', default=10, type=int, metavar='N', help='Maximum number of iterations in the validation set.')
-parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='Mini-batch size')
-parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='Momentum for SGD, alpha parameter for Adam.')
-parser.add_argument('--beta', default=0.999, type=float, metavar='M', help='Beta parameters for Adam.')
-parser.add_argument('--weight-decay', '--wd', default=0, type=float, metavar='W', help='Weight decay.')
-parser.add_argument('--print-freq', default=10, type=int, metavar='N', help='Print frequency.')
-parser.add_argument('--seed', default=0, type=int, help='Seed for random functions, and network initialization.')
-parser.add_argument('--checkpoints-path', default='checkpoints', metavar='PATH', help='Path to store the checkpoints (e.g., models, tensorboard data, etc.).')
-parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH', help='CSV where to save per-epoch train and valid stats')
-parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH', help='CSV where to save per-gradient descent train stats')
-parser.add_argument('--log-output', action='store_true', help='If enabled, Dispnet outputs will be saved at each validation step.')
-parser.add_argument('--resnet-layers',  type=int, default=18, choices=[18, 50], help='Number of ResNet layers for depth estimation.')
-parser.add_argument('--num-scales', '--number-of-scales', type=int, help='The number of scales.', metavar='W', default=1)
-parser.add_argument('-p', '--photo-loss-weight', type=float, help='Weight for photometric loss.', metavar='W', default=1)
-parser.add_argument('-s', '--smooth-loss-weight', type=float, help='Weight for disparity smoothness loss.', metavar='W', default=0.1)
-parser.add_argument('-c', '--geometry-consistency-loss-weight', type=float, help='Weight for depth consistency loss.', metavar='W', default=0.5)
-parser.add_argument('--with-ssim', type=int, default=1, help='With SSIM or not.')
-parser.add_argument('--with-mask', type=int, default=1, help='With the the mask for moving objects and occlusions or not.')
-parser.add_argument('--with-auto-mask', type=int,  default=0, help='With the the mask for stationary points.')
-parser.add_argument('--with-pretrain', type=int,  default=1, help='With or without imagenet pretrain for resnet.')
-parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='Path to pre-trained Disparity model.')
-parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='Path to pre-trained Pose model.')
-parser.add_argument('--freeze-disp-encoder-parameters', action='store_true', help='If enabled, the encoder parameters of the disparity network will not be updated during training.')
-parser.add_argument('--use-mask-static-objects-train', action='store_true', help='If enabled, a mask to select and suppress static objects will be used during training.')
-parser.add_argument('--initial-model-val-iterations', type=int,  default=0, help='Number of iterations to evaluate the model on the validation set before training.')
-parser.add_argument('--experiment-name', dest='experiment_name', type=str, required=True, help='Name of the experiment. Checkpoints are stored in checkpoints_path/experiment_name.')
-parser.add_argument('--wandb-project-name', type=str, default=None, help='Weights & Biases project name. If set to None, weights & biases will be disabled.')
-parser.add_argument('--rotation-matrix-mode', type=str, choices=['euler', 'quat'], default='euler', help='Rotation matrix representation.')
-parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border', 'reflection'], default='zeros', help='Padding mode for '
-    'image warping: this is important for photometric differenciation when going outside target image.'
-    ' zeros will null gradients outside target image. border will only null gradients of the coordinate outside (x or y)'
+parser.add_argument(
+    "-c", "--config",
+    default="configs/random_samples_filtered_by_speed.toml",
+    type=Path,
+    help="TOML configuration file for Yaak Dataset",
+)
+parser.add_argument(
+    '-b', '--batch-size',
+    default=4,
+    type=int,
+    help='Batch size.'
+)
+parser.add_argument(
+    '--epochs',
+    default=25,
+    type=int,
+    help='Total number of training epochs epochs.'
+)
+parser.add_argument(
+    '--max-train-iterations',
+    default=25,
+    type=int,
+    help='Max. number of iterations in the training set (per epoch).'
+)
+parser.add_argument(
+    '--max-val-iterations',
+    default=5,
+    type=int,
+    help='Max. number of iterations in the validation set.'
+)
+parser.add_argument(
+    "--gpu",
+    action="store_true",
+    help="Enable GPU usage."
 )
 
 best_error = -1
 n_iter = 0
 torch.autograd.set_detect_anomaly(True)
-
-
 def main():
 
     ####################################################################################################################
@@ -93,447 +75,287 @@ def main():
     #
     ####################################################################################################################
 
+    # ------------------------------------------------------------------------------------------------------------------
+    # Read arguments from command line.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    args = parser.parse_args()
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Read the contents of the TOML file.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if not args.config.is_file():
+        print(f"Error reading {args.config}, No such file")
+        return
+
+    with args.config.open("r") as pfile:
+        cfgs = toml.load(pfile)
+
+    # ------------------------------------------------------------------------------------------------------------------
     # Get the current device.
-    device = \
-        torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    # ------------------------------------------------------------------------------------------------------------------
 
-    print('[ Current device = {} ]'.format(torch.cuda.current_device()))
+    # Enable GPU
+    enable_gpu = torch.cuda.is_available() and args.gpu
+
+    # Selected device.
+    device = torch.device("cuda") if enable_gpu else torch.device("cpu")
+
+    print('[ Current device (torch.cuda.current_device()) ] {}'.format(torch.cuda.current_device()))
+    print('[ GPU enabled ] {}'.format(enable_gpu))
+    print('[ Device name ] {}'.format(device))
     print(' ')
 
-    # Get the number of GPUs.
-    num_gpus = torch.cuda.device_count()
-    print('[ Number of GPUs available for training ] N = {}'.format(num_gpus))
-    print(' ')
+    # ------------------------------------------------------------------------------------------------------------------
+    # Number of GPUs
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if enable_gpu:
+        num_gpus = torch.cuda.device_count()
+        print('[ Number of GPUs available for training ] N = {}'.format(num_gpus))
+        print(' ')
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Seed numbers and CUDA settings..
+    # ------------------------------------------------------------------------------------------------------------------
+
+    torch.manual_seed(cfgs["experiment_settings"]["seed"])
+    np.random.seed(cfgs["experiment_settings"]["seed"])
+
+    if enable_gpu:
+        cudnn.deterministic = True
+        cudnn.benchmark = True
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Data loader to be used.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    print(f"[ Data Loader {YaakIterableDataset.desc()}, Version {str(YaakIterableDataset.version())} ]")
+    print(" ")
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Global vars.
+    # ------------------------------------------------------------------------------------------------------------------
 
     # global best_error, n_iter, device
     global best_error, n_iter
 
-    args = parser.parse_args()
+    # ------------------------------------------------------------------------------------------------------------------
+    # Paths...
+    # ------------------------------------------------------------------------------------------------------------------
 
     # Time instant.
     timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
 
     # Experiment name
-    experiment_name = '{}/frozen_disp_encoder_params'.format(args.experiment_name) \
-        if args.freeze_disp_encoder_parameters else '{}/optim_all_params'.format(args.experiment_name)
+    experiment_name = None
+    if cfgs["experiment_settings"]["freeze_disp_encoder_parameters"]:
+        experiment_name = '{}/frozen_disp_encoder_params'.format(cfgs["experiment_settings"]["experiment_name"])
+    else:
+        experiment_name = '{}/optim_all_params'.format(cfgs["experiment_settings"]["experiment_name"])
 
     # Path to save data.
-    args.save_path = '{}/{}/{}'.format(args.checkpoints_path, experiment_name, timestamp)
-
-    print('[ Experimental results ] Save path: {}'.format(args.save_path))
-
-    # If the path does not exist, it is created.
-    if not os.path.exists(args.save_path):
-        os.makedirs(args.save_path)
-        print('\t- Creating directory: {}'.format(args.save_path))
-
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-    cudnn.deterministic = True
-    cudnn.benchmark = True
-
-    # Check the value of the arguments pretrained_disp and pretrained_pose.
-    args.pretrained_disp = None if args.pretrained_disp == "None" else args.pretrained_disp
-    args.pretrained_pose = None if args.pretrained_pose == "None" else args.pretrained_pose
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Save hyper-parameters in CSV file.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    hparams_list = [
-        ('device', device),
-        ('dataset-path', args.dataset_path),
-        ('cam-calib-path', args.cam_calib_path),
-        ('dataset-name', args.dataset_name),
-        ('camera-view-train', args.camera_view_train),
-        ('camera-view-val', args.camera_view_val),
-        ('test-drive-id-train', args.test_drive_id_train),
-        ('test-drive-id-val', args.test_drive_id_val),
-        ('frame-scaling-factor', args.frame_scaling_factor),
-        ('video-clip-length', args.video_clip_length),
-        ('video-clip-step', args.video_clip_step),
-        ('video-clip-fps', args.video_clip_fps),
-        ('oversampling-iterations-train', args.oversampling_iterations_train),
-        ('oversampling-iterations-val', args.oversampling_iterations_val),
-        ('telemetry-data-params-train', args.telemetry_data_params_train),
-        ('telemetry-data-params-val', args.telemetry_data_params_val),
-        ('workers', args.workers),
-        ('epochs', args.epochs),
-        ('max-train-iterations', args.max_train_iterations),
-        ('max-val-iterations', args.max_val_iterations),
-        ('batch-size', args.batch_size),
-        ('learning-rate', args.lr),
-        ('momentum', args.momentum),
-        ('beta', args.beta),
-        ('weight-decay', args.weight_decay),
-        ('seed', args.seed),
-        ('checkpoints-path', args.checkpoints_path),
-        ('resnet-layers', args.resnet_layers),
-        ('num-scales', args.num_scales),
-        ('photo-loss-weight', args.photo_loss_weight),
-        ('smooth-loss-weight', args.smooth_loss_weight),
-        ('geometry-consistency-loss-weight', args.geometry_consistency_loss_weight),
-        ('with-ssim', args.with_ssim),
-        ('with-mask', args.with_mask),
-        ('with-auto-mask', args.with_auto_mask),
-        ('with-pretrain', args.with_pretrain),
-        ('pretrained-disp', args.pretrained_disp),
-        ('pretrained-pose', args.pretrained_pose),
-        ('padding_model', args.padding_mode),
-        ('experiment_name', experiment_name),
-        ('wandb-project-name', args.wandb_project_name),
-        ('initial-model-val-iterations', args.initial_model_val_iterations),
-        ('freeze-disp-encoder-parameters', args.freeze_disp_encoder_parameters),
-        ('use-mask-static-objects-train', args.use_mask_static_objects_train)
-    ]
-
-    # Splits the hyperparameter names and values in two lists.
-    N_hp = len(hparams_list)
-    hparams_names_list = [hparams_list[i][0] for i in range(N_hp)]
-    hparams_values_list = [hparams_list[i][1] for i in range(N_hp)]
-
-    # Create a data frame...
-    hparams_df = pd.DataFrame(
-        {
-            'Name': hparams_names_list,
-            'Value': hparams_values_list
-        }
+    save_path = '{}/{}/{}'.format(
+        cfgs["experiment_settings"]["checkpoints_path"],
+        experiment_name,
+        timestamp
     )
 
-    # Save the hyper_parameters in a CSV file...
-    hparams_ffname = '{}/hyper_parameters.csv'.format(args.save_path)
-    hparams_df.to_csv( hparams_ffname, index=False)
+    print('[ Experimental results ] Save path: {}'.format(save_path))
 
-    print('\n[ Hyper-parameters ] Save in: {}'.format(hparams_ffname))
+    # If the path does not exist, it is created.
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+        print('\t- Creating directory: {}'.format(save_path))
+
+    # Check the value of the arguments pretrained_disp and pretrained_pose.
+    pretrained_disparity_model_file = None if cfgs["experiment_settings"]["pretrained_disp"] == "None" \
+        else cfgs["experiment_settings"]["pretrained_disp"]
+
+    pretrained_pose_model_file = None if cfgs["experiment_settings"]["pretrained_pose"] == "None" \
+        else cfgs["experiment_settings"]["pretrained_pose"]
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Training and validation hyper-parameters.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    wandb_hparams_dict = get_hyperparameters_dict(
+        device=device,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        max_train_iterations=args.max_train_iterations,
+        max_val_iterations=args.max_val_iterations,
+        cfgs=cfgs,
+        save_path=save_path,
+        verbose=True
+    )
 
     # ------------------------------------------------------------------------------------------------------------------
     # Init Weights & Biases...
     # ------------------------------------------------------------------------------------------------------------------
 
-    args.wandb_project_name = None if args.wandb_project_name == "None" else args.wandb_project_name
+    tensorboard_root_logdir = "{}/tb".format(save_path)
 
-    # Start a W & B run, passing `sync_tensorboard=True`, to plot your TensorBoard files
-    if args.wandb_project_name is not None:
+    if cfgs["experiment_settings"]["wandb_enable"]:
+
+        # The name of the project where you're sending the new run.
+        wandb_project_name = cfgs["experiment_settings"]["wandb_project_name"]
+
+        # An absolute path to a directory where metadata will be stored. When you call download() on an artifact,
+        # this is the directory where downloaded files will be saved. By default this is the ./wandb directory.
+        wandb_dir = cfgs["experiment_settings"]["wandb_dir"]
 
         # If the path does not exist, it is created.
-        wandb_path = "{:s}/{:s}".format(args.save_path, 'wandb')
-        if not os.path.exists(wandb_path):
-            os.makedirs(wandb_path)
+        if not os.path.exists(wandb_dir):
+            os.makedirs(wandb_dir)
 
-        # When using several event log directories,
-        # please call `wandb.tensorboard.patch(root_logdir="...")` before `wandb.init`
-        wandb.tensorboard.patch(root_logdir=args.save_path)
+        # When using several event log directories, please call `wandb.tensorboard.patch(root_logdir="...")`
+        # before `wandb.init`
+        wandb.tensorboard.patch(root_logdir=tensorboard_root_logdir)
 
+        # Starts a new run to track and log to W&B.
+        # Pass `sync_tensorboard=True`, to plot your TensorBoard files
         wandb.init(
-            dir=wandb_path,
-            config=dict(hparams_list),
-            project=args.wandb_project_name,
+            dir=wandb_dir,
+            config=wandb_hparams_dict,
+            project=wandb_project_name,
             sync_tensorboard=True
         )
 
-        print('[ Initializing Weights & Biases ]')
-        print('\t- Project name: {}'.format(args.wandb_project_name))
-        print('\t- Path: {}'.format(wandb_path))
+        print('\n[ Initializing Weights & Biases ]')
+        print('\t- Project name: {}'.format(wandb_project_name))
+        print('\t- Metadata path: {}'.format(wandb_dir))
+        print('\t- Tensorboard root log dir: {}'.format(tensorboard_root_logdir))
         print(' ')
 
     # ------------------------------------------------------------------------------------------------------------------
     # Summary writers...
     # ------------------------------------------------------------------------------------------------------------------
 
-    training_writer = SummaryWriter(args.save_path, flush_secs=10, max_queue=100)
+    # Tensorboard train/validation log directories...
+    tensorboard_train_log_dir = "{}/train".format(tensorboard_root_logdir)
+    tensorboard_val_log_dir = "{}/val".format(tensorboard_root_logdir)
 
+    # Training summary writer.
+    training_writer = SummaryWriter(tensorboard_train_log_dir, flush_secs=10, max_queue=100)
+
+    # Validation summary writer.
     num_output_writers = 1
     output_writers = []
-    if args.log_output:
+    if cfgs["experiment_settings"]["log_output"]:
         for i in range(num_output_writers):
-            output_writers.append(SummaryWriter('{}/{}/{}'.format(args.save_path, 'valid', str(i))))
+            output_writers.append(
+                SummaryWriter('{}/{}'.format(tensorboard_val_log_dir, str(i)))
+            )
 
-    # ------------------------------------------------------------------------------------------------------------------
-    # Frame target size, crop size, and scaling factor.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # Frame target size.
-    frame_target_size = (1080, 1920)
-
-    # Frame scaling factor.
-    frame_scaling_factor = args.frame_scaling_factor
-
-    # Frame crop size.
-    # frame_crop_size = {
-    #     '0.25': (256, -1),
-    #     '0.50': (512, -1),
-    #     '0.75': (768, -1),
-    #     '1.00': (-1, -1),
-    # }
-
-    # Offsets and scales to resize and crop each frame.
-    frame_scale_offset_dict = {
-        # Frame resolution at 25%: 256x480
-        '0.25': {'scale_factor': 0.27, 'offset': (2, 33, 19, 19)},
-        # Frame resolution at 50%: 512x960
-        '0.50': {'scale_factor': 0.539, 'offset': (5, 65, 37, 37)},
-        # Frame resolution at 75%: 768x1440
-        '0.75': {'scale_factor': 0.809, 'offset': (8, 97, 56, 57)},
-        # Frame resolution at 100%: 1024x1920
-        '1.00': {'scale_factor': 1.079, 'offset': (10, 131, 75, 76)},
-    }
+    print('\n[ Initializing Tensorboard ]')
+    print('\t- Train log path: {}'.format(tensorboard_train_log_dir))
+    print('\t- Val log path: {}'.format(tensorboard_val_log_dir))
 
     # ------------------------------------------------------------------------------------------------------------------
     # Transformations applied on data.
     # ------------------------------------------------------------------------------------------------------------------
 
-    # Means used for data normalization.
-    mean_per_channel = [0.45, 0.45, 0.45]
-
-    # Standard deviations used for data normalization.
-    std_per_channel = [0.225, 0.225, 0.225]
+    print("\n[ Creating training/validation data transformations ]")
 
     # Transformations applied on training data.
-    train_transform = CT.Compose([
-        CT.ScaleCustomCrop(
-            offset=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['offset'],
-            scaling_factor=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['scale_factor'],
-        ),
-        CT.RandomHorizontalFlip(),
-        CT.RandomScaleCrop(),
-        CT.ToFloat32TensorCHW(),
-        CT.Normalize(mean=mean_per_channel, std=std_per_channel)
-    ])
+    train_transform_cfgs = cfgs["train"]["configuration"]["transformation"]["series"]
+    train_transform = Compose(
+        [TRANSFORM_DICT[fn](**kwargs) for fn, kwargs in train_transform_cfgs.items()]
+    )
 
     # Transformations applied on validation data.
-    val_transform = CT.Compose([
-        CT.ScaleCustomCrop(
-            offset=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['offset'],
-            scaling_factor=frame_scale_offset_dict['{:0.2f}'.format(frame_scaling_factor)]['scale_factor'],
-        ),
-        CT.ToFloat32TensorCHW(),
-        CT.Normalize(mean=mean_per_channel, std=std_per_channel)
-    ])
+    val_transform_cfgs = cfgs["val"]["configuration"]["transformation"]["series"]
+    val_transform = Compose(
+        [TRANSFORM_DICT[fn](**kwargs) for fn, kwargs in val_transform_cfgs.items()]
+    )
 
     # ------------------------------------------------------------------------------------------------------------------
-    # Create train/validation datasets.
+    # Train/validation dataset paths.
     # ------------------------------------------------------------------------------------------------------------------
 
-    print("\n[ Creating train and validation datasets ]")
-    print("\t- Dataset name: {}".format(args.dataset_name))
-    print("\t- Video sequences path: {}".format(args.dataset_path))
-    print("\t- Camera calibration path: {}".format(args.cam_calib_path))
+    print("\n[ Train and validation dataset paths ]")
+    print("\t- Training data: ")
+    print("\t\t- Video sequences path: {}".format(cfgs["train"]["dataset"]["rootpath"]))
+    print("\t\t- Camera calibration path: {}".format(cfgs["train"]["dataset"]["camera_calibration"]))
+    print("\t- Validation data: ")
+    print("\t\t- Video sequences path: {}".format(cfgs["val"]["dataset"]["rootpath"]))
+    print("\t\t- Camera calibration path: {}".format(cfgs["val"]["dataset"]["camera_calibration"]))
 
-    train_dataset, val_dataset = None, None
+    # --------------------------------------------------------------------------------------------------------------
+    # Create the train dataset.
+    # --------------------------------------------------------------------------------------------------------------
 
-    if args.dataset_name == 'yaak':
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Parameters to be used to load telemetry data from the JSON files.
-        # --------------------------------------------------------------------------------------------------------------
-
-        # Parameters to be used to load telemetry data in the training stage.
-        tele_params_train_dict = json.loads(args.telemetry_data_params_train)
-
-        # Parameters to be used to load telemetry data in the validation stage.
-        tele_params_val_dict = json.loads(args.telemetry_data_params_val)
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Convert the value corresponding to the key 'return_telemetry' to boolean...
-        # --------------------------------------------------------------------------------------------------------------
-
-        assert 'return_telemetry' in tele_params_train_dict.keys(), \
-            '[ Error ] return_telemetry key is missing in tele_params_train_dict'
-
-        assert 'return_telemetry' in tele_params_val_dict.keys(), \
-            '[ Error ] return_telemetry key is missing in tele_params_val_dict'
-
-        tele_params_train_dict['return_telemetry'] = \
-            True if tele_params_train_dict['return_telemetry'] == "True" else False
-
-        tele_params_val_dict['return_telemetry'] = \
-            True if tele_params_val_dict['return_telemetry'] == "True" else False
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Show the contents to the telemetry data parameters dicts...
-        # --------------------------------------------------------------------------------------------------------------
-
-        print('\t- Parameters used to load telemetry data (training stage): ')
-        for k, v in tele_params_train_dict.items():
-            print('\t\t[ {} ] {}'.format(k, v))
-
-        print('\t- Parameters used to load telemetry data (validation stage):')
-        for k, v in tele_params_val_dict.items():
-            print('\t\t[ {} ] {}'.format(k, v))
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Create dictionaries of telemetry parameters to tbe passed to the YaakIterableDataset class.
-        # --------------------------------------------------------------------------------------------------------------
-
-        telemetry_data_params_dict = {
-            'train': (
-                ('minimum_speed', float(tele_params_train_dict['minimum_speed'])),
-                ('camera_view', str(tele_params_train_dict['camera_view']))
-            ),
-            'val': (
-                ('minimum_speed', float(tele_params_val_dict['minimum_speed'])),
-                ('camera_view', str(tele_params_val_dict['camera_view'])),
-            ),
-        }
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Define which data should be returned by the YaakIterableDataset class.
-        # --------------------------------------------------------------------------------------------------------------
-
-        if tele_params_train_dict['return_telemetry']:
-            print('\t- Telemetry data will be returned in the training stage.')
-
-        if tele_params_val_dict['return_telemetry']:
-            print('\t- Telemetry data will be returned in the validation stage.')
-
-        return_data_dict = {
-            'train': (
-                ('processed_videos', True),
-                ('tgt_ref_frames', True),
-                ('telemetry', tele_params_train_dict['return_telemetry']),
-                ('camera_intrinsics', True),
-                ('camera_distortion', False),
-                ('mask_static_objects', args.use_mask_static_objects_train),
-            ),
-            'val': (
-                ('processed_videos', True),
-                ('tgt_ref_frames', True),
-                ('telemetry', tele_params_val_dict['return_telemetry']),
-                ('camera_intrinsics', True),
-                ('camera_distortion', False),
-                ('mask_static_objects', False),
-            ),
-        }
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Define the camera view for model training and validation.
-        # --------------------------------------------------------------------------------------------------------------
-
-        camera_view_dict = {
-            'train': args.camera_view_train,
-            'val': args.camera_view_val,
-        }
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Define test drive ids for model training and validation.
-        # --------------------------------------------------------------------------------------------------------------
-
-        test_drive_id_train, test_drive_id_val = None, None
-
-        # Test drive IDs: Training set.
-        if args.test_drive_id_train.endswith(".txt"):
-            print('[ Loading test drive IDs from a TXT file ] Training set: \n')
-            test_drive_id_train = load_test_drive_ids_from_txt_file(fname=args.test_drive_id_train, verbose=True)
-        else:
-            test_drive_id_train = None if args.test_drive_id_train == "None" else args.test_drive_id_train
-
-        # Test drive IDs: Validation set.
-        if args.test_drive_id_val.endswith(".txt"):
-            print('[ Loading test drive IDs from a TXT file ] Validation set: \n')
-            test_drive_id_val = load_test_drive_ids_from_txt_file(fname=args.test_drive_id_val, verbose=True)
-        else:
-            test_drive_id_val = None if args.test_drive_id_val == "None" else args.test_drive_id_val
-
-        # Dictionary of test drive IDs.
-        test_drive_id_dict = {
-            'train': test_drive_id_train,
-            'val': test_drive_id_val,
-        }
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Create train dataset.
-        # --------------------------------------------------------------------------------------------------------------
-
-        print('\t- Creating the train dataset using the YaakIterableDataset class.')
-        print('\t\t- Every video in the training set will be over-sampled by N = {} iterations.'.format(
-                args.oversampling_iterations_train
-            )
+    print('\n[ Creating the train dataset using the YaakIterableDataset class ]')
+    print('\t- Every video in the training set will be over-sampled by N = {} iterations.'.format(
+            cfgs["train"]["configuration"]["sampling"]["oversampling"]
         )
-        print(' ')
+    )
+    print(' ')
 
-        train_dataset = YaakIterableDataset(
-            dataset_path=args.dataset_path,
-            cam_calib_path=args.cam_calib_path,
-            test_drive_id=test_drive_id_dict['train'],
-            camera_view=camera_view_dict['train'],
-            video_extension='mp4',
-            telemetry_filename='metadata.json',
-            video_clip_length=args.video_clip_length,
-            video_clip_step=args.video_clip_step,
-            video_clip_memory_format='default',
-            video_clip_output_dtype='default',
-            video_clip_fps=args.video_clip_fps,
-            frame_target_size=frame_target_size,
-            processed_videos_filename_suffix='-force-key.defish',
-            telemetry_data_params=telemetry_data_params_dict['train'],
-            oversampling_iterations=args.oversampling_iterations_train,
-            return_data=return_data_dict['train'],
-            transform=train_transform,
-            device_id=torch.cuda.current_device(),
-            device_name='gpu' if torch.cuda.is_available() else 'cpu',
-            verbose=True
+    train_dataset = YaakIterableDataset(
+        start=0,
+        end=args.max_train_iterations * args.batch_size,
+        dataset=cfgs["train"]["dataset"],
+        config_frames=cfgs["train"]["configuration"]["frame"],
+        config_sampling=cfgs["train"]["configuration"]["sampling"],
+        config_returns=cfgs["train"]["configuration"]["return"],
+        transform=train_transform,
+        device_id=torch.cuda.current_device(),
+        device_name="gpu" if enable_gpu else "cpu",
+        verbose=True,
+    )
+
+    # --------------------------------------------------------------------------------------------------------------
+    # Create the validation dataset.
+    # --------------------------------------------------------------------------------------------------------------
+
+    print('\n[ Creating the validation dataset using the YaakIterableDataset class ]')
+    print('\t- Every video in the validation set will be over-sampled by N = {} iterations.'.format(
+            cfgs["val"]["configuration"]["sampling"]["oversampling"]
         )
+    )
+    print(' ')
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Create validation dataset.
-        # --------------------------------------------------------------------------------------------------------------
-        print(' ')
-        print('\t- Creating the validation dataset using the YaakIterableDataset class.')
-        print('\t\t- Every video in the validation set will be over-sampled by N = {} iterations.'.format(
-                args.oversampling_iterations_val
-            )
-        )
-        print(' ')
-
-        val_dataset = YaakIterableDataset(
-            dataset_path=args.dataset_path,
-            cam_calib_path=args.cam_calib_path,
-            test_drive_id=test_drive_id_dict['val'],
-            camera_view=camera_view_dict['val'],
-            video_extension='mp4',
-            telemetry_filename='metadata.json',
-            video_clip_length=args.video_clip_length,
-            video_clip_step=args.video_clip_step,
-            video_clip_memory_format='default',
-            video_clip_output_dtype='default',
-            video_clip_fps=args.video_clip_fps,
-            frame_target_size=frame_target_size,
-            processed_videos_filename_suffix='-force-key.defish',
-            telemetry_data_params=telemetry_data_params_dict['val'],
-            oversampling_iterations=args.oversampling_iterations_val,
-            return_data=return_data_dict['val'],
-            transform=val_transform,
-            device_id=torch.cuda.current_device(),
-            device_name='gpu' if torch.cuda.is_available() else 'cpu',
-            verbose=True
-        )
-
-        print(' ')
+    val_dataset = YaakIterableDataset(
+        start=0,
+        end=args.max_val_iterations * args.batch_size,
+        dataset=cfgs["val"]["dataset"],
+        config_frames=cfgs["val"]["configuration"]["frame"],
+        config_sampling=cfgs["val"]["configuration"]["sampling"],
+        config_returns=cfgs["val"]["configuration"]["return"],
+        transform=val_transform,
+        device_id=torch.cuda.current_device(),
+        device_name="gpu" if enable_gpu else "cpu",
+        verbose=True,
+    )
+    print(' ')
 
     # ------------------------------------------------------------------------------------------------------------------
     # Create train/validation data loaders.
     # ------------------------------------------------------------------------------------------------------------------
 
     print("\n[ Creating data loaders ]")
-    print("\t- Creating train data loader.")
+    print("\t- Creating a train data loader.")
 
     # Train loader.
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.workers,
+        num_workers=cfgs["experiment_settings"]["workers"],
         pin_memory=False,
     )
 
-    print("\t- Creating validation data loader.")
+    print("\t- Creating a validation data loader.")
 
     # Validation loader.
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.workers,
+        num_workers=cfgs["experiment_settings"]["workers"],
         pin_memory=False,
     )
 
@@ -541,45 +363,55 @@ def main():
     # Create models: Disparity and Pose networks.
     # ------------------------------------------------------------------------------------------------------------------
 
-    if args.with_pretrain:
-        print('\n[ The DispResNet/PoseResNet encoder network will be initialized with pretrained weights (ImageNet) ]')
+    print("\n[ Creating models ] Disparity (DispResNet) and Pose (PoseResNet) networks.")
 
-    # Disparity network.
-    disp_net = \
-        models.DispResNet(num_layers=args.resnet_layers, pretrained=args.with_pretrain, verbose=False).to(device)
+    if cfgs["experiment_settings"]["with_pretrain"]:
+        print('\t- The disparity (encoder) and pose network parameters'
+              ' will be initialized from pretrained weights (e.g., ImageNet).')
 
-    # Pose network.
-    pose_net = models.PoseResNet(num_layers=18, pretrained=args.with_pretrain).to(device)
-
-    print("\n[ Creating models ] Disparity (DispResNet) and Pose (PoseResNet) networks")
     print("\t- DispResNet (num_layers = {}, pretrain = {}) | Device = {}".format(
-            args.resnet_layers,
-            args.with_pretrain,
-            device
+                cfgs["experiment_settings"]["resnet_layers"],
+                cfgs["experiment_settings"]["with_pretrain"],
+                device
         )
     )
     print("\t- PoseResNet (num_layers = 18, pretrain = {}) | Device = {}".format(
-            args.with_pretrain,
+            cfgs["experiment_settings"]["with_pretrain"],
             device
         )
     )
+
+    # Disparity network.
+    disp_net = \
+        models.DispResNet(
+            num_layers=cfgs["experiment_settings"]["resnet_layers"],
+            pretrained=cfgs["experiment_settings"]["with_pretrain"],
+            verbose=False
+        ).to(device)
+
+    # Pose network.
+    pose_net = models.PoseResNet(
+        num_layers=18,
+        pretrained=cfgs["experiment_settings"]["with_pretrain"]
+    ).to(device)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Initialize DispResNet/PoseResNet networks with pre-trained weights stored on disk...
     # ------------------------------------------------------------------------------------------------------------------
 
-    if args.pretrained_disp:
-        print('\n[ Initializing DispResNet network with pretrained weights stored on disk ]')
-        print("\t- File: {}".format(args.pretrained_disp))
-        weights = torch.load(args.pretrained_disp)
+    # Load pre-trained disparity network parameters.
+    if pretrained_disparity_model_file:
+        print('\n[ Initializing disparity network (DispResNet) with pretrained weights stored on disk ]')
+        print("\t- File: {}".format(pretrained_disparity_model_file))
+        weights = torch.load(pretrained_disparity_model_file)
         disp_net.load_state_dict(weights['state_dict'], strict=False)
         print("\t- The model parameters have been updated.")
 
     # Load pre-trained pose network parameters.
-    if args.pretrained_pose:
-        print('\n[ Initializing PoseResNet network with pretrained weights stored on disk ]')
-        print("\t- File: {}".format(args.pretrained_pose))
-        weights = torch.load(args.pretrained_pose)
+    if pretrained_pose_model_file:
+        print('\n[ Initializing the pose network (PoseResNet) with pretrained weights stored on disk ]')
+        print("\t- File: {}".format(pretrained_pose_model_file))
+        weights = torch.load(pretrained_pose_model_file)
         pose_net.load_state_dict(weights['state_dict'], strict=False)
         print("\t- The model parameters have been updated.")
 
@@ -596,6 +428,7 @@ def main():
     print('\n[ Count model parameters ]')
     print('\t- DispResNet | N = {:0.2f}M params'.format(disp_net_num_params))
     print('\t- PoseResNet | N = {:0.2f}M params'.format(pose_net_num_params))
+    print(' ')
 
     # Adding the disparity network parameter count to tensorboard.
     training_writer.add_text(
@@ -617,7 +450,7 @@ def main():
     # Freezing the encoder parameters of the disparity network...
     # ------------------------------------------------------------------------------------------------------------------
 
-    if args.freeze_disp_encoder_parameters:
+    if cfgs["experiment_settings"]["freeze_disp_encoder_parameters"]:
 
         print('\n[ Freezing the encoder parameters of the disparity network ]')
 
@@ -648,7 +481,7 @@ def main():
     disp_net = disp_net.to(device)
     pose_net = pose_net.to(device)
 
-    print('\n[ Data parallelism with torch.nn.DataParallel ]')
+    print('\n[ Data parallelism (with torch.nn.DataParallel) ]')
     print('\t- [ Disparity network ] Device IDs = {} | Output device = {}'.format(
             disp_net.device_ids,
             disp_net.output_device
@@ -668,15 +501,15 @@ def main():
 
     # Selecting parameters to be optimized.
     optim_params = [
-        {'params': disp_net.parameters(), 'lr': args.lr},
-        {'params': pose_net.parameters(), 'lr': args.lr}
+        {'params': disp_net.parameters(), 'lr': cfgs["experiment_settings"]["learning_rate"]},
+        {'params': pose_net.parameters(), 'lr': cfgs["experiment_settings"]["learning_rate"]}
     ]
 
     # Optimizer...
     optimizer = torch.optim.Adam(
         optim_params,
-        betas=(args.momentum, args.beta),
-        weight_decay=args.weight_decay
+        betas=(cfgs["experiment_settings"]["momentum"], cfgs["experiment_settings"]["beta"]),
+        weight_decay=cfgs["experiment_settings"]["weight_decay"]
     )
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -684,10 +517,10 @@ def main():
     # ------------------------------------------------------------------------------------------------------------------
 
     # Log summary file.
-    log_summary_ffname = '{}/{}'.format(args.save_path, args.log_summary)
+    log_summary_ffname = '{}/{}'.format(save_path, cfgs["experiment_settings"]["log_summary"])
 
     # Log full file.
-    log_full_ffname = '{}/{}'.format(args.save_path, args.log_full)
+    log_full_ffname = '{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"])
 
     print('\n[ Creating a CSV file to log data ]')
     print('\t- Log summary | File: {}'.format(log_summary_ffname))
@@ -711,7 +544,7 @@ def main():
     # Evaluate the model on the validation set before training...
     # ------------------------------------------------------------------------------------------------------------------
 
-    if args.initial_model_val_iterations > 0:
+    if cfgs["experiment_settings"]["initial_model_val_iterations"] > 0:
 
         print('\n[ Evaluating the model on the validation set before training... ]')
         print('[ Creating a logger for initial model evaluation) ]')
@@ -719,17 +552,17 @@ def main():
         logger_init = TermLogger(
             n_epochs=args.epochs,
             train_size=0,
-            valid_size=args.initial_model_val_iterations,
+            valid_size=cfgs["experiment_settings"]["initial_model_val_iterations"],
         )
 
         logger_init.reset_valid_bar()
         logger_init.valid_bar.update(0)
 
-        for val_index in range(args.initial_model_val_iterations):
+        for val_index in range(cfgs["experiment_settings"]["initial_model_val_iterations"]):
 
             errors, error_names = \
                 validate_without_gt(
-                    args=args,
+                    cfgs=cfgs,
                     val_loader=val_loader,
                     disp_net=disp_net,
                     pose_net=pose_net,
@@ -737,8 +570,9 @@ def main():
                     max_iterations=1,
                     logger=logger_init,
                     train_writer=training_writer,
+                    save_path=None,
                     output_writers=output_writers,
-                    return_telemetry=tele_params_val_dict['return_telemetry'],
+                    return_telemetry=cfgs["val"]["configuration"]["return"]["telemetry"],
                     show_progress_bar=True,
                     initial_model_evaluation=True,
                     device=device,
@@ -754,7 +588,7 @@ def main():
             for error, name in zip(errors, error_names):
                 training_writer.add_scalar(name, error, val_index)
 
-        logger_init.valid_bar.update(args.initial_model_val_iterations)
+        logger_init.valid_bar.update(cfgs["experiment_settings"]["initial_model_val_iterations"])
 
     ####################################################################################################################
     #
@@ -794,16 +628,18 @@ def main():
         logger.reset_train_bar()
 
         train_loss = train(
-            args=args,
+            cfgs=cfgs,
             train_loader=train_loader,
             disp_net=disp_net,
             pose_net=pose_net,
             optimizer=optimizer,
             epoch=epoch,
+            batch_size=args.batch_size,
             max_iterations=args.max_train_iterations,
             logger=logger,
             train_writer=training_writer,
-            return_telemetry=tele_params_train_dict['return_telemetry'],
+            save_path=save_path,
+            return_telemetry=cfgs["train"]["configuration"]["return"]["telemetry"],
             show_progress_bar=True,
             device=device,
             verbose=(False, False)
@@ -819,7 +655,7 @@ def main():
 
         errors, error_names = \
             validate_without_gt(
-                args=args,
+                cfgs=cfgs,
                 val_loader=val_loader,
                 disp_net=disp_net,
                 pose_net=pose_net,
@@ -827,17 +663,16 @@ def main():
                 max_iterations=args.max_val_iterations,
                 logger=logger,
                 train_writer=training_writer,
+                save_path=None,
                 output_writers=output_writers,
-                return_telemetry=tele_params_val_dict['return_telemetry'],
+                return_telemetry=cfgs["val"]["configuration"]["return"]["telemetry"],
                 show_progress_bar=True,
                 initial_model_evaluation=False,
                 device=device,
                 verbose=False,
             )
 
-        error_string = \
-            ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
-
+        error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
         for error, name in zip(errors, error_names):
@@ -861,7 +696,7 @@ def main():
         best_error = min(best_error, decisive_error)
 
         save_checkpoint(
-            args.save_path,
+            save_path,
             {'epoch': epoch + 1, 'state_dict': disp_net.module.state_dict()},
             {'epoch': epoch + 1, 'state_dict': pose_net.module.state_dict()},
             is_best
@@ -899,20 +734,22 @@ def main():
     # Finish the wandb run to upload the TensorBoard logs to W & B.
     # ------------------------------------------------------------------------------------------------------------------
 
-    if args.wandb_project_name is not None:
+    if cfgs["experiment_settings"]["wandb_enable"]:
         wandb.finish()
 
 
 def train(
-    args,
+    cfgs,
     train_loader,
     disp_net,
     pose_net,
     optimizer,
     epoch,
+    batch_size,
     max_iterations,
     logger,
     train_writer,
+    save_path,
     return_telemetry=False,
     show_progress_bar=False,
     device=torch.device("cpu"),
@@ -963,7 +800,10 @@ def train(
     # Training loss coefficients.
     # ------------------------------------------------------------------------------------------------------------------
 
-    w1, w2, w3 = args.photo_loss_weight, args.smooth_loss_weight, args.geometry_consistency_loss_weight
+    # w1, w2, w3 = args.photo_loss_weight, args.smooth_loss_weight, args.geometry_consistency_loss_weight
+    w1 = cfgs["experiment_settings"]["photo_loss_weight"]
+    w2 = cfgs["experiment_settings"]["smooth_loss_weight"]
+    w3 = cfgs["experiment_settings"]["geometry_consistency_loss_weight"]
 
     # ------------------------------------------------------------------------------------------------------------------
     # Set the models to "training mode".
@@ -982,7 +822,7 @@ def train(
 
     for batch in train_loader:
 
-        log_losses = i > 0 and n_iter % args.print_freq == 0
+        log_losses = i > 0 and n_iter % cfgs["experiment_settings"]["print_freq"] == 0
 
         # Measure data loading time.
         data_time.update(time.time() - end)
@@ -1051,12 +891,12 @@ def train(
                 ref_depths=ref_depths,
                 poses=poses,
                 poses_inv=poses_inv,
-                max_scales=args.num_scales,
-                with_ssim=args.with_ssim,
-                with_mask=args.with_mask,
-                with_auto_mask=args.with_auto_mask,
-                padding_mode=args.padding_mode,
-                rotation_mode=args.rotation_matrix_mode,
+                max_scales=cfgs["experiment_settings"]["num_scales"],
+                with_ssim=cfgs["experiment_settings"]["with_ssim"],
+                with_mask=cfgs["experiment_settings"]["with_mask"],
+                with_auto_mask=cfgs["experiment_settings"]["with_auto_mask"],
+                padding_mode=cfgs["experiment_settings"]["padding_mode"],
+                rotation_mode=cfgs["experiment_settings"]["rotation_matrix_mode"],
                 writer_obj_tag='Train',
                 writer_obj_step=epoch,
                 writer_obj=train_writer if i + 1 == max_iterations else None,
@@ -1090,7 +930,7 @@ def train(
             train_writer.flush()
 
         # record loss and EPE
-        losses.update(loss.item(), args.batch_size)
+        losses.update(loss.item(), batch_size)
 
         # --------------------------------------------------------------------------------------------------------------
         # Compute the gradients and perform a single gradient descent step.
@@ -1111,14 +951,14 @@ def train(
         # Update logs...
         # --------------------------------------------------------------------------------------------------------------
 
-        with open('{}/{}'.format(args.save_path, args.log_full), 'a') as csvfile:
+        with open('{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"]), 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
 
         if show_progress_bar:
             logger.train_bar.update(i+1)
 
-        if (i+1) % args.print_freq == 0:
+        if (i+1) % cfgs["experiment_settings"]["print_freq"] == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
 
         # --------------------------------------------------------------------------------------------------------------
@@ -1222,7 +1062,7 @@ def train(
             # ----------------------------------------------------------------------------------------------------------
 
             video_clip_time = (
-                np.asarray(video_clip_indices) / float(args.video_clip_fps)
+                np.asarray(video_clip_indices) / float(cfgs["train"]["configuration"]["frame"]["frame_fps"])
             ).tolist()
 
             video_clip_time_str = ['{:0.2f}'.format(t) for t in video_clip_time[0]]
@@ -1424,7 +1264,7 @@ def train(
 
 @torch.no_grad()
 def validate_without_gt(
-    args,
+    cfgs,
     val_loader,
     disp_net,
     pose_net,
@@ -1432,6 +1272,7 @@ def validate_without_gt(
     max_iterations,
     logger,
     train_writer,
+    save_path,
     output_writers=[],
     return_telemetry=False,
     show_progress_bar=False,
@@ -1581,7 +1422,7 @@ def validate_without_gt(
             # ----------------------------------------------------------------------------------------------------------
 
             video_clip_time = (
-                    np.asarray(video_clip_indices) / float(args.video_clip_fps)
+                    np.asarray(video_clip_indices) / float(cfgs["val"]["configuration"]["frame"]["frame_fps"])
             ).tolist()
 
             video_clip_time_str = ['{:0.2f}'.format(t) for t in video_clip_time[0]]
@@ -1760,12 +1601,12 @@ def validate_without_gt(
             ref_depths=ref_depths,
             poses=poses,
             poses_inv=poses_inv,
-            max_scales=args.num_scales,
-            with_ssim=args.with_ssim,
-            with_mask=args.with_mask,
+            max_scales=cfgs["experiment_settings"]["num_scales"],
+            with_ssim=cfgs["experiment_settings"]["with_ssim"],
+            with_mask=cfgs["experiment_settings"]["with_mask"],
             with_auto_mask=False,
-            padding_mode=args.padding_mode,
-            rotation_mode=args.rotation_matrix_mode,
+            padding_mode=cfgs["experiment_settings"]["padding_mode"],
+            rotation_mode=cfgs["experiment_settings"]["rotation_matrix_mode"],
             writer_obj_tag='{:s}_{:d}'.format(writer_prefix_tag, i),
             writer_obj_step=epoch,
             writer_obj=output_writers[i] if log_outputs and i < len(output_writers) else None,
@@ -1799,8 +1640,8 @@ def validate_without_gt(
         if show_progress_bar and not initial_model_evaluation:
             logger.valid_bar.update(i+1)
 
-        if (i+1) % args.print_freq == 0:
-            logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
+        if (i+1) % cfgs["experiment_settings"]["print_freq"] == 0:
+            logger.valid_writer.write('Validation: Time {} Loss {}'.format(batch_time, losses))
 
         # --------------------------------------------------------------------------------------------------------------
         # Log poses.

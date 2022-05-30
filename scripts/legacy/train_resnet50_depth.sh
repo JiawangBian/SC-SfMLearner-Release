@@ -133,12 +133,12 @@ CAMERA_VIEW_VAL="cam_front_center"
 # Test drive ID used as training set.
 # TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
 TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11, 2021-10-13--06-30-56"
-# TEST_DRIVE_ID_TRAIN="test_drive_ids/test_drive_ids_train.txt"
+# TEST_DRIVE_ID_TRAIN="test_drive_ids/drive_ids_train.txt"
 
 # Test drive ID used as validation set.
 # TEST_DRIVE_ID_VAL="2021-08-13--09-27-11, 2021-10-13--06-30-56, 2022-01-25--14-54-13, 2022-01-28--13-15-40"
 TEST_DRIVE_ID_VAL="2021-08-13--09-27-11"
-# TEST_DRIVE_ID_VAL="test_drive_ids/test_drive_ids_val.txt"
+# TEST_DRIVE_ID_VAL="test_drive_ids/drive_ids_val.txt"
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Parameters to be used to load telemetry data from the JSON files.
