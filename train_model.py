@@ -25,14 +25,14 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 parser = argparse.ArgumentParser(
-    description='Train the SfM learner model on the Yaak dataset using an efficient data loader.',
+    description='Model training and validation (SfM learner) on the Yaak dataset.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 parser.add_argument(
     "-c", "--config",
-    default="configs/random_samples_filtered_by_speed.toml",
+    default="configs/model_training/dynamic_scenes_single_scale.toml",
     type=Path,
-    help="TOML configuration file for Yaak Dataset",
+    help="TOML configuration file to carry out model training and validation on the Yaak dataset.",
 )
 parser.add_argument(
     '-b', '--batch-size',
@@ -146,7 +146,7 @@ def main():
     # ------------------------------------------------------------------------------------------------------------------
 
     # Time instant.
-    timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
+    timestamp = datetime.datetime.now().strftime("%d-%m-%Y-%H%MH")
 
     # Experiment name
     experiment_name = None
@@ -187,6 +187,7 @@ def main():
         max_train_iterations=args.max_train_iterations,
         max_val_iterations=args.max_val_iterations,
         cfgs=cfgs,
+        mode="train",
         save_path=save_path,
         verbose=True
     )
@@ -532,7 +533,7 @@ def main():
 
     with open(log_full_ffname, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
-        writer.writerow(['train_loss', 'photometric_loss', 'disparity_smoothness_loss', 'geometry_consistency_loss'])
+        writer.writerow(['train_loss', 'photometric_loss', 'smoothness_loss', 'geometry_consistency_loss'])
 
     ####################################################################################################################
     #
@@ -917,7 +918,7 @@ def train(
                 tag='Train_loss_per_iter/photometric_loss', scalar_value=loss_1.item(), global_step=n_iter
             )
             train_writer.add_scalar(
-                tag='Train_loss_per_iter/disparity_smoothness_loss', scalar_value=loss_2.item(), global_step=n_iter
+                tag='Train_loss_per_iter/smoothness_loss', scalar_value=loss_2.item(), global_step=n_iter
             )
             train_writer.add_scalar(
                 tag='Train_loss_per_iter/geometry_consistency_loss', scalar_value=loss_3.item(), global_step=n_iter
@@ -948,12 +949,16 @@ def train(
         end = time.time()
 
         # --------------------------------------------------------------------------------------------------------------
-        # Update logs...
+        # Update CSV file.
         # --------------------------------------------------------------------------------------------------------------
 
         with open('{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"]), 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Update logger.
+        # --------------------------------------------------------------------------------------------------------------
 
         if show_progress_bar:
             logger.train_bar.update(i+1)
@@ -1094,7 +1099,7 @@ def train(
                 tag='Train_loss/photometric_loss', scalar_value=total_loss_1, global_step=epoch
             )
             train_writer.add_scalar(
-                tag='Train_loss/disparity_smoothness_loss', scalar_value=total_loss_2, global_step=epoch
+                tag='Train_loss/smoothness_loss', scalar_value=total_loss_2, global_step=epoch
             )
             train_writer.add_scalar(
                 tag='Train_loss/geometry_consistency_loss', scalar_value=total_loss_3, global_step=epoch
@@ -1725,7 +1730,7 @@ def validate_without_gt(
     return losses.avg, [
         '{:s}_loss/total_loss'.format(writer_prefix_tag),
         '{:s}_loss/photometric_loss'.format(writer_prefix_tag),
-        '{:s}_loss/disparity_smoothness_loss'.format(writer_prefix_tag),
+        '{:s}_loss/smoothness_loss'.format(writer_prefix_tag),
         '{:s}_loss/geometry_consistency_loss'.format(writer_prefix_tag),
     ]
 

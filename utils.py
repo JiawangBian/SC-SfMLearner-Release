@@ -164,93 +164,155 @@ def get_hyperparameters_dict(
     max_train_iterations,
     max_val_iterations,
     cfgs,
+    mode="train",
     save_path=None,
     verbose=True
 ):
 
     """
-        Creates a dictionary of training and validation hyper-parameters.
+        Creates a dictionary of model training/validation hyper-parameters.
         If save_path is provided, such data is stored in a CSV file.
     """
 
-    hparams_list = [
-        # Device (e.g., GPU ID).
-        ('device', device),
-        # Seed number.
-        ('seed', cfgs["experiment_settings"]["seed"]),
-        # Frame information: Training.
-        ('train_frame_size', cfgs["train"]["configuration"]["frame"]["frame_size"]),
-        ('train_frame_count', cfgs["train"]["configuration"]["frame"]["frame_count"]),
-        ('train_frame_step', cfgs["train"]["configuration"]["frame"]["frame_step"]),
-        # Frame information: Validation.
-        ('val_frame_size', cfgs["val"]["configuration"]["frame"]["frame_size"]),
-        ('val_frame_count', cfgs["val"]["configuration"]["frame"]["frame_count"]),
-        ('val_frame_step', cfgs["val"]["configuration"]["frame"]["frame_step"]),
-        # Sampling information: Training.
-        ('train_sampling_speed', cfgs["train"]["configuration"]["sampling"]["speed"]),
-        ('train_sampling_camera_view', cfgs["train"]["configuration"]["sampling"]["camera_view"]),
-        ('train_sampling_oversampling', cfgs["train"]["configuration"]["sampling"]["oversampling"]),
-        # Sampling information: Validation.
-        ('val_sampling_speed', cfgs["val"]["configuration"]["sampling"]["speed"]),
-        ('val_sampling_camera_view', cfgs["val"]["configuration"]["sampling"]["camera_view"]),
-        ('val_sampling_oversampling', cfgs["val"]["configuration"]["sampling"]["oversampling"]),
-        # Camera views: Training & Validation.
-        ('train_camera_view', cfgs["train"]["dataset"]["camera_view"]),
-        ('val_camera_view', cfgs["val"]["dataset"]["camera_view"]),
-        # Drive ID: Training & Validation.
-        ('train_drive_ids', cfgs["train"]["dataset"]["drive_ids"]),
-        ('val_drive_ids', cfgs["val"]["dataset"]["drive_ids"]),
-        # Common hyper-parameters.
-        ('epochs', epochs),
-        ('batch_size', batch_size),
-        ('max_train_iterations', max_train_iterations),
-        ('max_val_iterations', max_val_iterations),
-        ('initial_model_val_iterations', cfgs["experiment_settings"]["initial_model_val_iterations"]),
-        # Number of resnet layers.
-        ('resnet_layers', cfgs["experiment_settings"]["resnet_layers"]),
-        # Optimizer settings.
-        ('learning_rate', cfgs["experiment_settings"]["learning_rate"]),
-        ('momentum', cfgs["experiment_settings"]["momentum"]),
-        ('beta', cfgs["experiment_settings"]["beta"]),
-        ('weight_decay', cfgs["experiment_settings"]["weight_decay"]),
-        # Number of scales to train the model.
-        ('num_scales', cfgs["experiment_settings"]["num_scales"]),
-        # Loss function....
-        ('photo_loss_weight', cfgs["experiment_settings"]["photo_loss_weight"]),
-        ('smooth_loss_weight', cfgs["experiment_settings"]["smooth_loss_weight"]),
-        ('geometry_consistency_loss_weight', cfgs["experiment_settings"]["geometry_consistency_loss_weight"]),
-        ('with_ssim', cfgs["experiment_settings"]["with_ssim"]),
-        ('with_mask', cfgs["experiment_settings"]["with_mask"]),
-        ('with_auto_mask', cfgs["experiment_settings"]["with_auto_mask"]),
-        # Model parameters...
-        ('with_pretrain', cfgs["experiment_settings"]["with_pretrain"]),
-        ('pretrained_disp', cfgs["experiment_settings"]["pretrained_disp"]),
-        ('pretrained_pose', cfgs["experiment_settings"]["pretrained_pose"]),
-        ('freeze_disp_encoder_parameters', cfgs["experiment_settings"]["freeze_disp_encoder_parameters"]),
-        # Rotation matrix and padding mode...
-        ('rotation_matrix_mode', cfgs["experiment_settings"]["rotation_matrix_mode"]),
-        ('padding_mode', cfgs["experiment_settings"]["padding_mode"])
-    ]
+    assert mode in ["train", "val", "test"], f"[ Error ] Mode = {mode} is not implemented."
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Training and validation hyper-parameters.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    if mode == "train":
+
+        hparams_list = [
+            # Device (e.g., GPU ID).
+            ("device", device),
+            # Seed number.
+            ("seed", cfgs["experiment_settings"]["seed"]),
+            # Frame information: Training.
+            ("train_frame_size", cfgs["train"]["configuration"]["frame"]["frame_size"]),
+            ("train_frame_count", cfgs["train"]["configuration"]["frame"]["frame_count"]),
+            ("train_frame_step", cfgs["train"]["configuration"]["frame"]["frame_step"]),
+            # Frame information: Validation.
+            ("val_frame_size", cfgs["val"]["configuration"]["frame"]["frame_size"]),
+            ("val_frame_count", cfgs["val"]["configuration"]["frame"]["frame_count"]),
+            ("val_frame_step", cfgs["val"]["configuration"]["frame"]["frame_step"]),
+            # Sampling information: Training.
+            ("train_sampling_speed", cfgs["train"]["configuration"]["sampling"]["speed"]),
+            ("train_sampling_camera_view", cfgs["train"]["configuration"]["sampling"]["camera_view"]),
+            ("train_sampling_oversampling", cfgs["train"]["configuration"]["sampling"]["oversampling"]),
+            # Sampling information: Validation.
+            ("val_sampling_speed", cfgs["val"]["configuration"]["sampling"]["speed"]),
+            ("val_sampling_camera_view", cfgs["val"]["configuration"]["sampling"]["camera_view"]),
+            ("val_sampling_oversampling", cfgs["val"]["configuration"]["sampling"]["oversampling"]),
+            # Camera views: Training & Validation.
+            ("train_camera_view", cfgs["train"]["dataset"]["camera_view"]),
+            ("val_camera_view", cfgs["val"]["dataset"]["camera_view"]),
+            # Drive ID: Training & Validation.
+            ("train_drive_ids", cfgs["train"]["dataset"]["drive_ids"]),
+            ("val_drive_ids", cfgs["val"]["dataset"]["drive_ids"]),
+            # Common hyper-parameters.
+            ("epochs", epochs),
+            ("batch_size", batch_size),
+            ("max_train_iterations", max_train_iterations),
+            ("max_val_iterations", max_val_iterations),
+            ("initial_model_val_iterations", cfgs["experiment_settings"]["initial_model_val_iterations"]),
+            # Number of resnet layers.
+            ("resnet_layers", cfgs["experiment_settings"]["resnet_layers"]),
+            # Optimizer settings.
+            ("learning_rate", cfgs["experiment_settings"]["learning_rate"]),
+            ("momentum", cfgs["experiment_settings"]["momentum"]),
+            ("beta", cfgs["experiment_settings"]["beta"]),
+            ("weight_decay", cfgs["experiment_settings"]["weight_decay"]),
+            # Number of scales to train the model.
+            ("num_scales", cfgs["experiment_settings"]["num_scales"]),
+            # Loss function....
+            ("photo_loss_weight", cfgs["experiment_settings"]["photo_loss_weight"]),
+            ("smooth_loss_weight", cfgs["experiment_settings"]["smooth_loss_weight"]),
+            ("geometry_consistency_loss_weight", cfgs["experiment_settings"]["geometry_consistency_loss_weight"]),
+            ("with_ssim", cfgs["experiment_settings"]["with_ssim"]),
+            ("with_mask", cfgs["experiment_settings"]["with_mask"]),
+            ("with_auto_mask", cfgs["experiment_settings"]["with_auto_mask"]),
+            # Model parameters...
+            ("with_pretrain", cfgs["experiment_settings"]["with_pretrain"]),
+            ("pretrained_disp", cfgs["experiment_settings"]["pretrained_disp"]),
+            ("pretrained_pose", cfgs["experiment_settings"]["pretrained_pose"]),
+            ("freeze_disp_encoder_parameters", cfgs["experiment_settings"]["freeze_disp_encoder_parameters"]),
+            # Rotation matrix and padding mode...
+            ("rotation_matrix_mode", cfgs["experiment_settings"]["rotation_matrix_mode"]),
+            ("padding_mode", cfgs["experiment_settings"]["padding_mode"])
+        ]
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Validation/test hyper-parameters.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    elif mode == "val" or mode == "test":
+
+        hparams_list = [
+            # Device (e.g., GPU ID).
+            ("device", device),
+            # Seed number.
+            ("seed", cfgs["experiment_settings"]["seed"]),
+            # Frame information: Validation.
+            (f"{mode}_frame_size", cfgs[mode]["configuration"]["frame"]["frame_size"]),
+            (f"{mode}_frame_count", cfgs[mode]["configuration"]["frame"]["frame_count"]),
+            (f"{mode}_frame_step", cfgs[mode]["configuration"]["frame"]["frame_step"]),
+            # Sampling information: Validation.
+            (f"{mode}_sampling_speed", cfgs[mode]["configuration"]["sampling"]["speed"]),
+            (f"{mode}_sampling_camera_view", cfgs[mode]["configuration"]["sampling"]["camera_view"]),
+            (f"{mode}_sampling_oversampling", cfgs[mode]["configuration"]["sampling"]["oversampling"]),
+            # Camera views: Training & Validation.
+            (f"{mode}_camera_view", cfgs[mode]["dataset"]["camera_view"]),
+            # Drive ID: Validation.
+            (f"{mode}_drive_ids", cfgs[mode]["dataset"]["drive_ids"]),
+            # Common hyper-parameters.
+            ("batch_size", batch_size),
+            (f"max_{mode}_iterations", max_val_iterations),
+            # Number of resnet layers.
+            ("resnet_layers", cfgs["experiment_settings"]["resnet_layers"]),
+            # Number of scales to train the model.
+            ("num_scales", cfgs["experiment_settings"]["num_scales"]),
+            # Loss function....
+            ("photo_loss_weight", cfgs["experiment_settings"]["photo_loss_weight"]),
+            ("smooth_loss_weight", cfgs["experiment_settings"]["smooth_loss_weight"]),
+            ("geometry_consistency_loss_weight", cfgs["experiment_settings"]["geometry_consistency_loss_weight"]),
+            ("with_ssim", cfgs["experiment_settings"]["with_ssim"]),
+            ("with_mask", cfgs["experiment_settings"]["with_mask"]),
+            ("with_auto_mask", cfgs["experiment_settings"]["with_auto_mask"]),
+            # Model parameters...
+            ("with_pretrain", cfgs["experiment_settings"]["with_pretrain"]),
+            ("pretrained_disp", cfgs["experiment_settings"]["pretrained_disp"]),
+            ("pretrained_pose", cfgs["experiment_settings"]["pretrained_pose"]),
+            # Rotation matrix and padding mode...
+            ("rotation_matrix_mode", cfgs["experiment_settings"]["rotation_matrix_mode"]),
+            ("padding_mode", cfgs["experiment_settings"]["padding_mode"])
+        ]
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Save data on disk.
+    # ------------------------------------------------------------------------------------------------------------------
 
     if save_path is not None:
 
+        # Create the path if it does not exist.
         if not os.path.exists(save_path):
             os.makedirs(save_path)
 
         # Create a data frame...
         hparams_df = pd.DataFrame(
             {
-                'Name': [hparams_list[i][0] for i in range(len(hparams_list))],
-                'Value': [hparams_list[i][1] for i in range(len(hparams_list))]
+                "Name": [hparams_list[i][0] for i in range(len(hparams_list))],
+                "Value": [hparams_list[i][1] for i in range(len(hparams_list))]
             }
         )
 
-        # Saving the hyper_parameters in a CSV file...
-        hparams_ffname = '{}/hyper_parameters.csv'.format(save_path)
+        # Saving the model hyper-parameters in a CSV file...
+        hparams_ffname = f"{save_path}/hyper_parameters_train_{mode}.csv"
         hparams_df.to_csv(hparams_ffname, index=False)
 
         if verbose:
-            print('\n[ Training/validation hyper-parameters ]')
-            print('\t- Saved in: {}'.format(hparams_ffname))
+            print(f"\n[ Model hyper-parameters ] Stage = {mode}")
+            print(f"\t- Saved in: {hparams_ffname}")
+            print(" ")
 
     return dict(hparams_list)
+

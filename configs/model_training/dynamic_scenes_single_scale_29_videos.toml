@@ -1,0 +1,439 @@
+# Sample TOML for loading a dataset from Disk/S3
+
+title = "Self-supervised monocular depth estimation model: Training & validation experimental settings."
+
+########################################################################################################################
+#
+# General experiment settings.
+#
+########################################################################################################################
+
+[experiment_settings]
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Experiment basic information.
+  # --------------------------------------------------------------------------------------------------------------------
+
+  # Number of data loading workers. The current implementation supports only zero at the moment.
+  workers = 0
+
+  # Seed for random functions, and network initialization.
+  seed = 27052022
+
+  # Number of resnet layers to be used by the disparity encoder network. Use: 18 or 50.
+  resnet_layers = 50
+
+  # Number of scales used to train the model.
+  num_scales = 1
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Experiment details: Name, log paths, ...
+  # --------------------------------------------------------------------------------------------------------------------
+
+  # Name of the experiment, which is appended to the checkpoints path (e.g., "checkpoints_path/experiment_name").
+  experiment_name = "depth_r50_efficient_data_loader_scales_1_videos_29"
+
+  # Checkpoints path used to store experimental results (e.g., models, tensorboard data, csv files, etc).
+  checkpoints_path = "/nas/team-space/arturo/experimental_results/depth_estimation/sc_sfmlearner_yaak_data/marvin_server/tests_30.5.2022/train_on_29_videos"
+
+  # CSV file where the total training and validation losses, will be saved, per epoch:
+  #
+  #   - train_loss
+  #   - validation_loss
+  #
+  log_summary = "progress_log_summary.csv"
+
+  # CSV file where training and validation losses and its components, will be saved, per epoch:
+  #
+  #   - total_loss
+  #   - photometric_loss
+  #   - disparity_smoothness_loss
+  #   - geometry_consistency_loss
+  #
+  log_full = "progress_log_full.csv"
+
+  # If enabled, the disparity network output data will be saved at each validation step.
+  log_output = true
+
+  # Print frequency.
+  print_freq = 25
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Weights & Biases
+  # --------------------------------------------------------------------------------------------------------------------
+
+  # Project name.
+  wandb_project_name = "self-supervised-depth"
+
+  # Directory to store data.
+  wandb_dir = "wandb_runs"
+
+  # Enable weights and biases.
+  wandb_enable = false
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Model parameter initialization, freezing, etc.
+  # --------------------------------------------------------------------------------------------------------------------
+
+  # With or without pre-trained Resnet model on the Imagenet dataset.
+  # Use: 1/0 to enable/disable the feature.
+  with_pretrain = 1
+
+  # Path to pre-trained Disparity model.
+  pretrained_disp = "/nas/team-space/arturo/pretrained_models/sc_sfmlearner_pretrained_models/resnet50_depth_256/dispnet_model_best.pth.tar"
+
+  # Path to pre-trained Pose model.
+  pretrained_pose = "/nas/team-space/arturo/pretrained_models/sc_sfmlearner_pretrained_models/resnet50_depth_256/exp_pose_model_best.pth.tar"
+
+  # If enabled, the encoder parameters of the disparity network will not be updated during training.
+  freeze_disp_encoder_parameters = false
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Initial model validation.
+  # --------------------------------------------------------------------------------------------------------------------
+
+  # Number of iterations to evaluate the model on the validation set before training.
+  initial_model_val_iterations = 10
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Loss weights and masks.
+  # --------------------------------------------------------------------------------------------------------------------
+
+  # Weight for the photometric loss.
+  photo_loss_weight = 1.0
+
+  # Weight for disparity smoothness loss
+  smooth_loss_weight = 0.1
+
+  # Weight for depth consistency loss.
+  geometry_consistency_loss_weight = 0.5
+
+  # With SSIM or not.
+  # Use: 1/0 to enable/disable the feature.
+  with_ssim = 1
+
+  # With the the mask for moving objects and occlusions or not.
+  # Use: 1/0 to enable/disable the feature.
+  with_mask = 1
+
+  # With the the mask for stationary points.
+  # Use: 1/0 to enable/disable the feature.
+  with_auto_mask = 1
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Optimizer settings.
+  # --------------------------------------------------------------------------------------------------------------------
+
+   # Learning rate.
+  learning_rate = 1e-4
+
+  # Momentum for SGD, alpha parameter for Adam.
+  momentum = 0.9
+
+  # Beta parameters for Adam.
+  beta = 0.999
+
+  # Weight decay.
+  weight_decay = 0
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Rotation matrix, padding mode.
+  # --------------------------------------------------------------------------------------------------------------------
+
+  # Rotation matrix representation. Use: "euler", "quat".
+  rotation_matrix_mode = "euler"
+
+  # Padding mode. Use any of: "zeros", "border", "reflection".
+  # This argument is passed to torch.nn.functional.grid_sample(...)
+  padding_mode = "border"
+
+########################################################################################################################
+#
+# Model training settings.
+#
+########################################################################################################################
+
+[train]
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Dataset information
+  # --------------------------------------------------------------------------------------------------------------------
+
+  [train.dataset]
+
+    # Root path where to find the drive data
+    rootpath = "/nas/drives/yaak/yaak_dataset/video_data"
+
+    # Where to find the camera calibration files
+    camera_calibration = "/nas/drives/yaak/yaak_dataset/camera_calibration"
+
+    # Drive IDs to process, if set to "*" would read drive_ids in `rootpath`. Also:
+    #   1) Drive IDs can be specified as items in a list:
+    #     drive_ids = ["2021-08-13--09-27-11", "2022-01-09--09-18-46"]
+    #   2) Or in a text file (one drive ID per line):
+    #     drive_ids = some_path/test_drive_ids.txt
+    drive_ids = "test_drive_ids/drive_ids_train.txt"
+
+    # Which camera to load, if set to "*" would ready all camera views
+    camera_view = ["cam_front_center"]
+
+    # Telemetry filename
+    telemetry_filename = "metadata.json"
+
+    # File suffix, choices "", "defish", "pii",
+    suffix = "-force-key.defish"
+
+    # File extension
+    extension = "mp4"
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # YaakIterableDataset configuration
+  # --------------------------------------------------------------------------------------------------------------------
+
+  [train.configuration]
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Frame information
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [train.configuration.frame]
+
+      # Size of frames (image_width x image_height) to be returned. Leave empty if return original resolution.
+      # Would change if transformation applied check `configuration.transformation`.
+      frame_size = [1920, 1080]
+
+      # Number of 1 + number reference frames in each sample
+      # Leave 1 if you only want target frame
+      frame_count = 3
+
+      # The number of frame keys should equal `frame_count` above.
+      frame_keys = ["reference_frame:0", "target_frame", "reference_frame:1"]
+
+      # Sample reference frame from target +/- frame_step
+      frame_step =  10
+
+      # Frame data-type, "default" or "float32" before transformation.
+      # It is overridden if you use `ToFloat32TensorCHW` in configuration.transformation.series
+      frame_dtype = "default"
+
+      # Memory format for samples before transformation.
+      # It is overridden if you use `ToFloat32TensorCHW` in configuration.transformation.series
+      frame_mem_order = "default"
+
+      # Frames per second.
+      frame_fps = 30
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Criteria for filtering frame samples.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [train.configuration.sampling]
+
+      # Speed in km / h.
+      speed = 8
+
+      # Camera view.
+      camera_view = "cam_rear"
+
+      # Not used.
+      oversampling = 1
+
+      # Sampling mode. Use:
+      #   "random_samples": Not implemented.
+      #   "random_samples_speed_filter": Implemented.
+      #   "sequential_samples": In progress.
+      sampling_mode="random_samples_speed_filter"
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Return data configuration.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [train.configuration.return]
+
+      # Return telemetry information
+      telemetry = true
+
+      # Return transformed frames, train.configuration.transformation.series should be set.
+      transformed = true
+
+      # Return camera intrinsics, would be transofmed if enabled above
+      camera_intrinsics = true
+
+      # Return camera distortion
+      camera_distortion = false
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Data transformation functions to be applied during the training stage.
+    # Check full list implemented at `data_loader_ml/tools/custom_transforms.py`
+    #
+    # ScaleCustomCrop transform: For the Yaak dataset, use following offsets and scaling factors to remove visible
+    # parts of the car on each video sequence that was recorded using the front center camera
+    # (e.g., camera_view = "cam_front_center").
+    #
+    #     ---------------------------------------------------------
+    #                    ScaleCustomCrop transform
+    #     ---------------------------------------------------------
+    #     Frame resolution (%)    Scale factor    Offset
+    #     ---------------------------------------------------------
+    #     256x480    (25%)        0.270           (2, 33, 19, 19)
+    #     512x960    (50%)        0.539           (5, 65, 37, 37)
+    #     768x1440   (75%)        0.809           (8, 97, 56, 57)
+    #     1024x1920 (100%)        1.079           (10, 131, 75, 76)
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [train.configuration.transformation]
+      [train.configuration.transformation.series]
+        [train.configuration.transformation.series.ScaleCustomCrop]
+          offset = [ 5, 65, 37, 37]
+          scaling_factor = 0.539
+        [train.configuration.transformation.series.RandomHorizontalFlip]
+        [train.configuration.transformation.series.RandomScaleCrop]
+        [train.configuration.transformation.series.ToFloat32TensorCHW]
+        [train.configuration.transformation.series.Normalize]
+          mean =  [0.45, 0.45, 0.45]
+          std =  [0.225, 0.225, 0.225]
+
+########################################################################################################################
+#
+# Model validation settings.
+#
+########################################################################################################################
+
+[val]
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # Dataset information
+  # --------------------------------------------------------------------------------------------------------------------
+
+  [val.dataset]
+
+    # Root path where to find the drive data
+    rootpath = "/nas/drives/yaak/yaak_dataset/video_data"
+
+    # Where to find the camera calibration files
+    camera_calibration = "/nas/drives/yaak/yaak_dataset/camera_calibration"
+
+    # Drive IDs to process, if set to "*" would read drive_ids in `rootpath`. Also:
+    #   1) Drive IDs can be specified as items in a list:
+    #     drive_ids = ["2021-08-13--09-27-11", "2022-01-09--09-18-46"]
+    #   2) Or in a text file (one drive ID per line):
+    #     drive_ids = some_path/test_drive_ids.txt
+    drive_ids = "test_drive_ids/drive_ids_val.txt"
+
+    # Which camera to load, if set to "*" would ready all camera views
+    camera_view = ["cam_front_center"]
+
+    # Telemetry filename
+    telemetry_filename = "metadata.json"
+
+    # File suffix, choices "", "defish", "pii",
+    suffix = "-force-key.defish"
+
+    # File extension
+    extension = "mp4"
+
+  # --------------------------------------------------------------------------------------------------------------------
+  # YaakIterableDataset configuration
+  # --------------------------------------------------------------------------------------------------------------------
+
+  [val.configuration]
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Frame information
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [val.configuration.frame]
+
+      # Size of frames (image_width x image_height) to be returned. Leave empty if return original resolution.
+      # Would change if transformation applied check `configuration.transformation`
+      frame_size = [1920, 1080]
+
+      # Number of 1 + number reference frames in each sample
+      # Leave 1 if you only want target frame
+      frame_count = 3
+
+      # The number of frame keys should equal `frame_count` above.
+      frame_keys = ["reference_frame:0", "target_frame", "reference_frame:1"]
+
+      # Sample reference frame from target +/- frame_step
+      frame_step =  10
+
+      # Frame data-type, "default" or "float32" before transformation.
+      # It is overridden if you use `ToFloat32TensorCHW` in configuration.transformation.series
+      frame_dtype = "default"
+
+      # Memory format for samples before transformation.
+      # It is overridden if you use `ToFloat32TensorCHW` in configuration.transformation.series
+      frame_mem_order = "default"
+
+      # Frames per second.
+      frame_fps = 30
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Criteria for filtering frame samples.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [val.configuration.sampling]
+
+      # Speed in km / h.
+      speed = 8
+
+      # Camera view.
+      camera_view = "cam_rear"
+
+      # Not used.
+      oversampling = 1
+
+      # Sampling mode. Use:
+      #   "random_samples": Not implemented.
+      #   "random_samples_speed_filter": Implemented.
+      #   "sequential_samples": In progress.
+      sampling_mode="random_samples_speed_filter"
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Return data configuration.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [val.configuration.return]
+
+      # Return telemetry information
+      telemetry = true
+
+      # Return transformed frames, train.configuration.transformation.series should be set.
+      transformed = true
+
+      # Return camera intrinsics, would be transofmed if enabled above
+      camera_intrinsics = true
+
+      # Return camera distortion
+      camera_distortion = false
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Data transformations functions to be applied during the validation stage.
+    # Check full list implemented at `data_loader_ml/tools/custom_transforms.py`
+    #
+    # ScaleCustomCrop transform: For the Yaak dataset, use following offsets and scaling factors to remove visible
+    # parts of the car on each video sequence that was recorded using the front center camera
+    # (e.g., camera_view = "cam_front_center").
+    #
+    #     ---------------------------------------------------------
+    #                    ScaleCustomCrop transform
+    #     ---------------------------------------------------------
+    #     Frame resolution (%)    Scale factor    Offset
+    #     ---------------------------------------------------------
+    #     256x480    (25%)        0.270           (2, 33, 19, 19)
+    #     512x960    (50%)        0.539           (5, 65, 37, 37)
+    #     768x1440   (75%)        0.809           (8, 97, 56, 57)
+    #     1024x1920 (100%)        1.079           (10, 131, 75, 76)
+    # ------------------------------------------------------------------------------------------------------------------
+
+    [val.configuration.transformation]
+      [val.configuration.transformation.series]
+        [val.configuration.transformation.series.ScaleCustomCrop]
+          offset = [ 5, 65, 37, 37]
+          scaling_factor = 0.539
+        [val.configuration.transformation.series.ToFloat32TensorCHW]
+        [val.configuration.transformation.series.Normalize]
+          mean =  [0.45, 0.45, 0.45]
+          std =  [0.225, 0.225, 0.225]
+
