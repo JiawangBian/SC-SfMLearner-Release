@@ -18,7 +18,7 @@ from data_loader_ml.dataset import YaakIterableDataset
 from data_loader_ml.tools.custom_transforms import Compose, TRANSFORM_DICT
 from utils import tensor2array, save_checkpoint, count_parameters, print_batch, normalize_image
 from utils import get_hyperparameters_dict
-from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss
+from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_velocity_supervision_loss
 from logger import TermLogger, AverageMeter
 from torch.utils.tensorboard import SummaryWriter
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument(
     "-c", "--config",
-    default="configs/model_training/dynamic_scenes_single_scale.toml",
+    default="configs/model_training/dynamic_scenes_single_scale_velsuploss.toml",
     type=Path,
     help="TOML configuration file to carry out model training and validation on the Yaak dataset.",
 )
@@ -63,10 +63,11 @@ parser.add_argument(
     action="store_true",
     help="Enable GPU usage."
 )
-
 best_error = -1
 n_iter = 0
 torch.autograd.set_detect_anomaly(True)
+
+
 def main():
 
     ####################################################################################################################
@@ -533,7 +534,14 @@ def main():
 
     with open(log_full_ffname, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
-        writer.writerow(['train_loss', 'photometric_loss', 'smoothness_loss', 'geometry_consistency_loss'])
+        writer.writerow([
+                'train_loss',
+                'photometric_loss',
+                'smoothness_loss',
+                'geometry_consistency_loss',
+                'velocity_supervision_loss'
+            ]
+        )
 
     ####################################################################################################################
     #
@@ -783,6 +791,7 @@ def train(
     total_loss_1 = 0.0
     total_loss_2 = 0.0
     total_loss_3 = 0.0
+    total_loss_4 = 0.0
 
     # ------------------------------------------------------------------------------------------------------------------
     # Pose variable names...
@@ -802,9 +811,18 @@ def train(
     # ------------------------------------------------------------------------------------------------------------------
 
     # w1, w2, w3 = args.photo_loss_weight, args.smooth_loss_weight, args.geometry_consistency_loss_weight
+
+    # Photometric loss weight.
     w1 = cfgs["experiment_settings"]["photo_loss_weight"]
+
+    # Disparity smoothness loss weight.
     w2 = cfgs["experiment_settings"]["smooth_loss_weight"]
+
+    # Geometry consistency loss weight.
     w3 = cfgs["experiment_settings"]["geometry_consistency_loss_weight"]
+
+    # Velocity-scaling weight loss.
+    w4 = cfgs["experiment_settings"]["velocity_scaling_weight"]
 
     # ------------------------------------------------------------------------------------------------------------------
     # Set the models to "training mode".
@@ -854,7 +872,7 @@ def train(
         #
         speed_data = None
         if return_telemetry:
-            speed_data = batch['telemetry_data/speed']
+            speed_data = batch['telemetry_data/speed'].to(device)
 
         # 5) Camera view, test drive ID, video clip indices.
         #
@@ -883,6 +901,7 @@ def train(
         # Compute losses.
         # --------------------------------------------------------------------------------------------------------------
 
+        # Computing photometric (loss_1) and geometry consistency (loss_3) losses.
         loss_1, loss_3 = \
             compute_photo_and_geometry_loss(
                 tgt_img=tgt_img,
@@ -904,34 +923,24 @@ def train(
                 device=device
             )
 
+        # Compute smooth loss for the disparity image (loss_2).
         loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
 
-        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3
+        # Condition to compute the velocity supervision loss.
+        condition_loss_4 = (speed_data is not None) and (w4 > 0.)
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Log losses per iteration...
-        # --------------------------------------------------------------------------------------------------------------
+        # Compute velocity supervision loss.
+        loss_4 = compute_velocity_supervision_loss(
+                speed_data=speed_data,
+                poses=poses,
+                poses_inv=poses_inv,
+                frame_step=cfgs["train"]["configuration"]["frame"]["frame_step"],
+                frames_fps=cfgs["train"]["configuration"]["frame"]["frame_fps"],
+                convert_speed_kmph_to_mps=True,
+            ) if condition_loss_4 else 0.0
 
-        if log_losses:
-
-            train_writer.add_scalar(
-                tag='Train_loss_per_iter/photometric_loss', scalar_value=loss_1.item(), global_step=n_iter
-            )
-            train_writer.add_scalar(
-                tag='Train_loss_per_iter/smoothness_loss', scalar_value=loss_2.item(), global_step=n_iter
-            )
-            train_writer.add_scalar(
-                tag='Train_loss_per_iter/geometry_consistency_loss', scalar_value=loss_3.item(), global_step=n_iter
-            )
-            train_writer.add_scalar(
-                tag='Train_loss_per_iter/total_loss', scalar_value=loss.item(), global_step=n_iter
-            )
-
-            # Flushes the event file to disk.
-            train_writer.flush()
-
-        # record loss and EPE
-        losses.update(loss.item(), batch_size)
+        # Total loss.
+        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3 + w4 * loss_4
 
         # --------------------------------------------------------------------------------------------------------------
         # Compute the gradients and perform a single gradient descent step.
@@ -949,22 +958,82 @@ def train(
         end = time.time()
 
         # --------------------------------------------------------------------------------------------------------------
-        # Update CSV file.
+        # Update CSV file (i.e., total loss and its components):
+        #
+        #   - train_loss
+        #   - photometric_loss
+        #   - smoothness_loss
+        #   - geometry_consistency_loss
+        #   - velocity_supervision_loss
+        #
         # --------------------------------------------------------------------------------------------------------------
 
         with open('{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"]), 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
-            writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
+            writer.writerow([
+                loss.item(),
+                loss_1.item(),
+                loss_2.item(),
+                loss_3.item(),
+                loss_4.item() if condition_loss_4 else loss_4
+            ])
 
         # --------------------------------------------------------------------------------------------------------------
         # Update logger.
         # --------------------------------------------------------------------------------------------------------------
+
+        # Record training loss and batch size.
+        losses.update(loss.item(), batch_size)
 
         if show_progress_bar:
             logger.train_bar.update(i+1)
 
         if (i+1) % cfgs["experiment_settings"]["print_freq"] == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Log losses per iteration...
+        # --------------------------------------------------------------------------------------------------------------
+
+        if log_losses:
+
+            # Photometric loss (per N iterations).
+            train_writer.add_scalar(
+                tag='Train_loss_per_iter/photometric_loss',
+                scalar_value=loss_1.item(),
+                global_step=n_iter
+            )
+
+            # Smoothness loss (per N iterations).
+            train_writer.add_scalar(
+                tag='Train_loss_per_iter/smoothness_loss',
+                scalar_value=loss_2.item(),
+                global_step=n_iter
+            )
+
+            # Geometry consistency loss (per N iterations).
+            train_writer.add_scalar(
+                tag='Train_loss_per_iter/geometry_consistency_loss',
+                scalar_value=loss_3.item(),
+                global_step=n_iter
+            )
+
+            # Velocity supervision loss (per N iterations).
+            train_writer.add_scalar(
+                tag='Train_loss_per_iter/velocity_supervision_loss',
+                scalar_value=loss_4.item() if condition_loss_4 else loss_4,
+                global_step=n_iter
+            )
+
+            # Total loss (per N iterations).
+            train_writer.add_scalar(
+                tag='Train_loss_per_iter/total_loss',
+                scalar_value=loss.item(),
+                global_step=n_iter
+            )
+
+            # Flushes the event file to disk.
+            train_writer.flush()
 
         # --------------------------------------------------------------------------------------------------------------
         # Log poses.
@@ -1018,6 +1087,11 @@ def train(
         total_loss_1 += loss_1.item() / max_iterations
         total_loss_2 += loss_2.item() / max_iterations
         total_loss_3 += loss_3.item() / max_iterations
+
+        if condition_loss_4:
+            total_loss_4 += loss_4.item() / max_iterations
+        else:
+            total_loss_4 += loss_4 / max_iterations
 
         # --------------------------------------------------------------------------------------------------------------
         # Log losses, images, and estimated depth maps into Tensorboard every epoch. Only the data corresponding
@@ -1092,20 +1166,81 @@ def train(
                 )
 
             # ----------------------------------------------------------------------------------------------------------
-            # 4) Training losses...
+            # 4-1) Training losses: Unscaled components.
             # ----------------------------------------------------------------------------------------------------------
 
+            # Photometric loss.
             train_writer.add_scalar(
-                tag='Train_loss/photometric_loss', scalar_value=total_loss_1, global_step=epoch
+                tag='Train_loss/photometric_loss',
+                scalar_value=total_loss_1,
+                global_step=epoch
             )
+
+            # Smoothness loss.
             train_writer.add_scalar(
-                tag='Train_loss/smoothness_loss', scalar_value=total_loss_2, global_step=epoch
+                tag='Train_loss/smoothness_loss',
+                scalar_value=total_loss_2,
+                global_step=epoch
             )
+
+            # Geometry consistency loss.
             train_writer.add_scalar(
-                tag='Train_loss/geometry_consistency_loss', scalar_value=total_loss_3, global_step=epoch
+                tag='Train_loss/geometry_consistency_loss',
+                scalar_value=total_loss_3,
+                global_step=epoch
             )
+
+            # Velocity supervision loss.
             train_writer.add_scalar(
-                tag='Train_loss/total_loss', scalar_value=total_loss, global_step=epoch
+                tag='Train_loss/velocity_supervision_loss',
+                scalar_value=total_loss_4,
+                global_step=epoch
+            )
+
+            # Total training loss.
+            train_writer.add_scalar(
+                tag='Train_loss/total_loss',
+                scalar_value=total_loss,
+                global_step=epoch
+            )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 4-2) Training losses: Scaled components.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Photometric loss.
+            train_writer.add_scalar(
+                tag='Train_loss_scaled_components/photometric_loss',
+                scalar_value=w1 * total_loss_1,
+                global_step=epoch
+            )
+
+            # Smoothness loss.
+            train_writer.add_scalar(
+                tag='Train_loss_scaled_components/smoothness_loss',
+                scalar_value=w2 * total_loss_2,
+                global_step=epoch
+            )
+
+            # Geometry consistency loss.
+            train_writer.add_scalar(
+                tag='Train_loss_scaled_components/geometry_consistency_loss',
+                scalar_value=w3 * total_loss_3,
+                global_step=epoch
+            )
+
+            # Velocity supervision loss.
+            train_writer.add_scalar(
+                tag='Train_loss_scaled_components/velocity_supervision_loss',
+                scalar_value=w4 * total_loss_4,
+                global_step=epoch
+            )
+
+            # Total training loss.
+            train_writer.add_scalar(
+                tag='Train_loss_scaled_components/total_loss',
+                scalar_value=total_loss,
+                global_step=epoch
             )
 
             # ----------------------------------------------------------------------------------------------------------
@@ -1358,7 +1493,7 @@ def validate_without_gt(
         #
         speed_data = None
         if return_telemetry:
-            speed_data = batch['telemetry_data/speed']
+            speed_data = batch['telemetry_data/speed'].to(device)
 
         # 5) Camera view, test drive ID, video clip indices.
         #
@@ -1774,7 +1909,7 @@ def compute_depth(disp_net, tgt_img, ref_imgs, verbose=False):
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs, verbose=True):
 
-    """ Compute pose data for the target (tgt_img) and reference (ref_imgs) images. """
+    """ Compute pose data for the target image (tgt_img) w.r.t. one or more reference images (ref_imgs). """
 
     # ------------------------------------------------------------------------------------------------------------------
     # Computing poses.

@@ -2,9 +2,9 @@ from __future__ import division
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch import linalg as LA
 from inverse_warp import inverse_warp2
 from utils import tensor2array
-# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 ########################################################################################################################
 #
@@ -49,12 +49,148 @@ class SSIM(nn.Module):
         return torch.clamp((1 - SSIM_n / SSIM_d) / 2, 0, 1)
 
 
-# compute_ssim_loss = SSIM().to(device)
 compute_ssim_loss = SSIM()
+
 
 ########################################################################################################################
 #
-# Other losses: Photometric loss, geometry consistency loss, etc.
+# Velocity supervision loss.
+#
+########################################################################################################################
+
+
+def compute_velocity_supervision_loss(
+    speed_data,
+    poses,
+    poses_inv,
+    frame_step,
+    frames_fps,
+    convert_speed_kmph_to_mps,
+):
+
+    """
+
+    Computes the velocity supervision loss, Lv, as suggested in [1]:
+
+        Lv = | || x || - (s * dt) |
+
+    Where:
+
+        * | . |: is the L1 loss.
+        * || x ||: is the L2-norm of the vector x (i.e., its magnitude).
+        * x: is the translation vector estimated by the pose network between target and reference frames.
+        * s: is the speed.
+        * dt: is the time difference between the target and reference frames.
+
+    Notes:
+
+        * The pose network estimates 6 DoF parameters in a single vector X = [ tx, ty, tz, rx, ry, rz].
+        Here ti and ri are the translation and rotation parameters estimated between two consecutive frames,
+        respectively. During training, this vector has size of [batch_size, 6].
+
+    References:
+
+        [1] Guizilini, Vitor, Rares Ambrus, Sudeep Pillai, Allan Raventos, and Adrien Gaidon.
+        "3d packing for self-supervised monocular depth estimation." In Proceedings of the IEEE/CVF
+        Conference on Computer Vision and Pattern Recognition, pp. 2485-2494. 2020.
+
+
+    """
+
+    # If convert_speed_kmph_to_mps is True, the vehicle's speed is converted from km/h to m/s.
+    # Otherwise, the current speed is kept (in km/h).
+    scaled_speed_data = \
+        (1000. * speed_data.unsqueeze(-1)) / (60. ** 2) \
+        if convert_speed_kmph_to_mps else speed_data.unsqueeze(-1)
+
+    # Sampling period (single frame) in seconds.
+    sampling_period = 1. / float(frames_fps)
+
+    # Total time difference between target and reference frames.
+    delta_time = sampling_period * frame_step
+
+    # Ground-truth distance estimated from speed data and the sampling period, between target and reference frames.
+    gt_distance = scaled_speed_data * delta_time
+
+    # Check the dimensions of the ground-truth distance.
+    assert (len(gt_distance.shape) == 2) and (gt_distance.shape[1] == 1), \
+        f"[ Error ] The ground-truth distance data must have two dimensions and the second one must be 1. " \
+        f"Currently, it has a size of: {gt_distance.shape}"
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Loop over pose data to get the translation vector between target w.r.t. reference frames.
+    # Such data is used to compute the velocity supervision loss.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # Total loss.
+    total_loss = 0.0
+
+    # Count iterations.
+    count_iterations = 0
+
+    for pose, pose_inv in zip(poses, poses_inv):
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Check the dimensions of the pose vectors and ground-truth distance data.
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Dimensions of the ground-truth distance and pose data (i.e., batch sizes must be the same).
+        assert (gt_distance.shape[0] == pose.shape[0]) and (gt_distance.shape[0] == pose_inv.shape[0]), \
+            f"[ Error ] The first dimension of ground-truth distance data must be equal to the batch size. " \
+            f"Currently, it has a size of: {gt_distance.shape}"
+
+        # Dimensions of the pose vector (i.e., its size must be [batch_size, 6]).
+        assert (pose.shape[1] == 6) and (len(pose.shape) == 2), \
+            f"[ Error ] The pose vector should have size of [batch_size, 6]. " \
+            f"Currently, it has a size of: {pose.shape}"
+
+        # Dimensions of the inverse pose vector (i.e., its size must be [batch_size, 6]).
+        assert (pose_inv.shape[1] == 6) and (len(pose_inv.shape) == 2), \
+            f"[ Error ] The inverse pose vector should have size of [batch_size, 6]. " \
+            f"Currently, it has a size of: {pose_inv.shape}"
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Get the translation vectors anc compute their magnitude.
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Translation vector (e.g., computed from pose_net(tgt_img, ref_img)) of size [batch_size, 3].
+        x = pose[:, :3]
+
+        # Inverse translation vector (e.g., computed from pose_net(ref_img, tgt_img) of size [batch_size, 3].
+        x_inv = pose_inv[:, :3]
+
+        # Predicted distance: L2-norm of the translation vector.
+        pred_distance = LA.vector_norm(x, ord=2, dim=-1)
+
+        # Predicted distance: L2-norm of the inverse translation vector.
+        pred_distance_inv = LA.vector_norm(x_inv, ord=2, dim=-1)
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Velocity supervision loss.
+        # --------------------------------------------------------------------------------------------------------------
+
+        # First component: Difference between L2-norm of the predicted translation vector and the
+        # ground-truth distance.
+        total_loss += (pred_distance - gt_distance).abs().mean()
+
+        # Second component: Difference between L2-norm of the predicted inverse translation vector and the
+        # ground-truth distance.
+        total_loss += (pred_distance_inv - gt_distance).abs().mean()
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Count iterations
+        # --------------------------------------------------------------------------------------------------------------
+
+        count_iterations += 1
+
+    total_loss /= count_iterations
+
+    return total_loss
+
+
+########################################################################################################################
+#
+# Photometric and geometry consistency losses.
 #
 ########################################################################################################################
 
@@ -191,6 +327,12 @@ def compute_photo_and_geometry_loss(
         ref_img_idx += 1
 
     return photo_loss, geometry_loss
+
+########################################################################################################################
+#
+# Pair-wise loss.
+#
+########################################################################################################################
 
 
 def compute_pairwise_loss(
@@ -383,18 +525,11 @@ def compute_pairwise_loss(
 
     return reconstruction_loss, geometry_consistency_loss
 
-
-def mean_on_mask(diff, valid_mask, device=torch.device("cpu")):
-
-    """ Compute mean value given a binary mask. """
-
-    mask = valid_mask.expand_as(diff)
-    if mask.sum() > 10000:
-        mean_value = (diff * mask).sum() / mask.sum()
-    else:
-        mean_value = torch.tensor(0).float().to(device)
-
-    return mean_value
+########################################################################################################################
+#
+# Smoothness loss...
+#
+########################################################################################################################
 
 
 def compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs):
@@ -429,9 +564,29 @@ def compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs):
 
     return loss
 
+########################################################################################################################
+#
+# Other losses...
+#
+########################################################################################################################
+
+
+def mean_on_mask(diff, valid_mask, device=torch.device("cpu")):
+
+    """ Compute mean value given a binary mask. """
+
+    mask = valid_mask.expand_as(diff)
+    if mask.sum() > 10000:
+        mean_value = (diff * mask).sum() / mask.sum()
+    else:
+        mean_value = torch.tensor(0).float().to(device)
+
+    return mean_value
+
 
 @torch.no_grad()
 def compute_errors(gt, pred, dataset):
+
     abs_diff, abs_rel, sq_rel, a1, a2, a3 = 0, 0, 0, 0, 0, 0
     batch_size, h, w = gt.size()
 
