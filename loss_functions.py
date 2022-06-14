@@ -78,9 +78,9 @@ def compute_velocity_supervision_loss(
 
         * | . |: is the L1 loss.
         * || x ||: is the L2-norm of the vector x (i.e., its magnitude).
-        * x: is the translation vector estimated by the pose network between target and reference frames.
-        * s: is the speed.
-        * dt: is the time difference between the target and reference frames.
+        * x: It's the translation vector estimated by the pose network between target and reference frames.
+        * s: It's the speed.
+        * dt: It's the time difference between the target and reference frames.
 
     Notes:
 
@@ -94,11 +94,14 @@ def compute_velocity_supervision_loss(
         "3d packing for self-supervised monocular depth estimation." In Proceedings of the IEEE/CVF
         Conference on Computer Vision and Pattern Recognition, pp. 2485-2494. 2020.
 
-
     """
 
-    # If convert_speed_kmph_to_mps is True, the vehicle's speed is converted from km/h to m/s.
-    # Otherwise, the current speed is kept (in km/h).
+    # ------------------------------------------------------------------------------------------------------------------
+    # Initialization.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    # If convert_speed_kmph_to_mps is True, the vehicle's speed is converted from kilometers per hour (mk/h)
+    # to meters per second (m/s). Otherwise, the current speed is kept (in km/h).
     scaled_speed_data = \
         (1000. * speed_data.unsqueeze(-1)) / (60. ** 2) \
         if convert_speed_kmph_to_mps else speed_data.unsqueeze(-1)
@@ -131,7 +134,7 @@ def compute_velocity_supervision_loss(
     for pose, pose_inv in zip(poses, poses_inv):
 
         # --------------------------------------------------------------------------------------------------------------
-        # Check the dimensions of the pose vectors and ground-truth distance data.
+        # Check the dimensions of the pose and ground-truth distance data.
         # --------------------------------------------------------------------------------------------------------------
 
         # Dimensions of the ground-truth distance and pose data (i.e., batch sizes must be the same).
@@ -150,7 +153,7 @@ def compute_velocity_supervision_loss(
             f"Currently, it has a size of: {pose_inv.shape}"
 
         # --------------------------------------------------------------------------------------------------------------
-        # Get the translation vectors anc compute their magnitude.
+        # Get the translation vectors and compute their magnitude.
         # --------------------------------------------------------------------------------------------------------------
 
         # Translation vector (e.g., computed from pose_net(tgt_img, ref_img)) of size [batch_size, 3].
@@ -159,10 +162,14 @@ def compute_velocity_supervision_loss(
         # Inverse translation vector (e.g., computed from pose_net(ref_img, tgt_img) of size [batch_size, 3].
         x_inv = pose_inv[:, :3]
 
-        # Predicted distance: L2-norm of the translation vector.
+        # --------------------------------------------------------------------------------------------------------------
+        # Compute the magnitude fo the translation vectors (L2-norm).
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Predicted distance computed as the L2-norm of the translation vector.
         pred_distance = LA.vector_norm(x, ord=2, dim=-1)
 
-        # Predicted distance: L2-norm of the inverse translation vector.
+        # Predicted distance computed as the L2-norm of the inverse translation vector.
         pred_distance_inv = LA.vector_norm(x_inv, ord=2, dim=-1)
 
         # --------------------------------------------------------------------------------------------------------------
