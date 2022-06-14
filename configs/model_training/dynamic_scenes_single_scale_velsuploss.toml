@@ -31,10 +31,10 @@ title = "Self-supervised monocular depth estimation model: Training & validation
   # --------------------------------------------------------------------------------------------------------------------
 
   # Name of the experiment, which is appended to the checkpoints path (e.g., "checkpoints_path/experiment_name").
-  experiment_name = "shortexp-train_r50_depth_single_scale"
+  experiment_name = "shortexp-train_r50_depth_single_scale-frame_step_5"
 
   # Checkpoints path used to store experimental results (e.g., models, tensorboard data, csv files, etc).
-  checkpoints_path = "/nas/team-space/arturo/experimental_results/depth_estimation/sc_sfmlearner_yaak_data/marvin_server/tests_june_13_2022/vel_superv_loss"
+  checkpoints_path = "/nas/team-space/arturo/experimental_results/depth_estimation/sc_sfmlearner_yaak_data/marvin_server/tests_june_14_2022/vel_superv_loss"
 
   # CSV file where the total training and validation losses, will be saved, per epoch:
   #
@@ -214,7 +214,7 @@ title = "Self-supervised monocular depth estimation model: Training & validation
       frame_keys = ["reference_frame:0", "target_frame", "reference_frame:1"]
 
       # Sample reference frame from target +/- frame_step
-      frame_step =  10
+      frame_step = 10
 
       # Frame data-type, "default" or "float32" before transformation.
       # It is overridden if you use `ToFloat32TensorCHW` in configuration.transformation.series
@@ -360,7 +360,7 @@ title = "Self-supervised monocular depth estimation model: Training & validation
       frame_keys = ["reference_frame:0", "target_frame", "reference_frame:1"]
 
       # Sample reference frame from target +/- frame_step
-      frame_step =  10
+      frame_step = 10
 
       # Frame data-type, "default" or "float32" before transformation.
       # It is overridden if you use `ToFloat32TensorCHW` in configuration.transformation.series
