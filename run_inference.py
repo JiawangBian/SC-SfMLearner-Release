@@ -16,6 +16,8 @@ import torch.optim
 import torch.utils.data
 import models
 import toml
+import random
+import string
 import skvideo.io
 from tqdm import tqdm
 from pathlib import Path
@@ -556,20 +558,29 @@ def validate_without_gt(
     # Create a path to store the video data
     # ------------------------------------------------------------------------------------------------------------------
 
-    # Path to save the video...
-    source_video_path = "videos"
-    destiny_video_path = f"{save_path}/{source_video_path}"
+    # Number of random characters.
+    num_random_chars = 10
+
+    # Random video id.
+    source_video_random_id = \
+        ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(num_random_chars))
+
+    # Source path to store the video data locally.
+    source_video_path = f"temp_videos/{source_video_random_id}"
+
+    # Destiny path store the video data (the video will be moved here after the inference process is completed).
+    destiny_video_path = f"{save_path}/videos"
 
     if not os.path.exists(source_video_path):
         os.makedirs(source_video_path)
         if verbose:
-            print(f"[ Creating directory to store video data ] Source path: {source_video_path}")
+            print(f"[ Creating SOURCE directory to store video data ] Source path: {source_video_path}")
             print(" ")
 
     if not os.path.exists(destiny_video_path):
         os.makedirs(destiny_video_path)
         if verbose:
-            print(f"[ Creating directory to store video data ] Destiny path: {destiny_video_path}")
+            print(f"[ Creating DESTINY directory to store video data ] Destiny path: {destiny_video_path}")
             print(" ")
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -1177,6 +1188,10 @@ def validate_without_gt(
 
     video_writer_obj.close()
 
+    if verbose:
+        print("[ Video writer ] Closing operation.")
+        print(" ")
+
     # ------------------------------------------------------------------------------------------------------------------
     # Moving video data.
     # ------------------------------------------------------------------------------------------------------------------
@@ -1197,10 +1212,17 @@ def validate_without_gt(
         traceback.print_exc()
         print(" ")
 
+    # ------------------------------------------------------------------------------------------------------------------
+    # Deleting video data
+    # ------------------------------------------------------------------------------------------------------------------
 
-    if verbose:
-        print("[ Video writer ] Closing operation.")
-        print(" ")
+    if source_video_path.startswith(f"temp_videos/{source_video_random_id}"):
+        shutil.rmtree(source_video_path)
+
+        if verbose:
+            print("[ Deleting the local directory to store video data ]")
+            print(f"\t- Source path: {source_video_path}")
+            print(" ")
 
     return losses.avg, [
         '{:s}_average_loss/total_loss'.format(writer_prefix_tag),

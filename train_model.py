@@ -25,7 +25,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 parser = argparse.ArgumentParser(
-    description='Model training and validation (SfM learner) on the Yaak dataset.',
+    description='Model training and validation (SfM learner) on the Yaak dataset (with velocity supervision loss).',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 parser.add_argument(
