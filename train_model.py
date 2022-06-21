@@ -18,7 +18,7 @@ from data_loader_ml.dataset import YaakIterableDataset
 from data_loader_ml.tools.custom_transforms import Compose, TRANSFORM_DICT
 from utils import tensor2array, save_checkpoint, count_parameters, print_batch, normalize_image
 from utils import get_hyperparameters_dict
-from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_velocity_supervision_loss
+from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss
 from logger import TermLogger, AverageMeter
 from torch.utils.tensorboard import SummaryWriter
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument(
     "-c", "--config",
-    default="configs/model_training/dynamic_scenes_single_scale_velsuploss.toml",
+    default="configs/model_training/dynamic_scenes_single_scale_velsuploss_fstep_5.toml",
     type=Path,
     help="TOML configuration file to carry out model training and validation on the Yaak dataset.",
 )
@@ -898,11 +898,31 @@ def train(
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs, verbose=verbose[1])
 
         # --------------------------------------------------------------------------------------------------------------
-        # Compute losses.
+        # Velocity supervision loss parameters.
         # --------------------------------------------------------------------------------------------------------------
 
-        # Computing photometric (loss_1) and geometry consistency (loss_3) losses.
-        loss_1, loss_3 = \
+        # Condition to compute the velocity supervision loss.
+        condition_loss_4 = (speed_data is not None) and (w4 > 0.)
+
+        # Parameters to compute the velocity supervision loss.
+        velocity_supervision_loss_params_dict = {
+            # Conversion: Km/h -> m/s. Speed data is of size: [batch_size, 1]
+            "speed_data": (1000. * speed_data.unsqueeze(-1)) / (60. ** 2),
+            # Frame step.
+            "frame_step": cfgs["train"]["configuration"]["frame"]["frame_step"],
+            # Frames per second.
+            "frame_fps": cfgs["train"]["configuration"]["frame"]["frame_fps"]
+        } if condition_loss_4 else None
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Computing the total loss and its components:
+        #   - Photometric loss (loss_1).
+        #   - Smooth loss (loss_2).
+        #   - Geometry consistency loss (loss_3).
+        #   - Velocity supervision loss (loss_4).
+        # --------------------------------------------------------------------------------------------------------------
+
+        loss_1, loss_3, loss_4 = \
             compute_photo_and_geometry_loss(
                 tgt_img=tgt_img,
                 ref_imgs=ref_imgs,
@@ -917,6 +937,7 @@ def train(
                 with_auto_mask=cfgs["experiment_settings"]["with_auto_mask"],
                 padding_mode=cfgs["experiment_settings"]["padding_mode"],
                 rotation_mode=cfgs["experiment_settings"]["rotation_matrix_mode"],
+                velocity_supervision_loss_params=velocity_supervision_loss_params_dict,
                 writer_obj_tag='Train',
                 writer_obj_step=epoch,
                 writer_obj=train_writer if i + 1 == max_iterations else None,
@@ -925,19 +946,6 @@ def train(
 
         # Compute smooth loss for the disparity image (loss_2).
         loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
-
-        # Condition to compute the velocity supervision loss.
-        condition_loss_4 = (speed_data is not None) and (w4 > 0.)
-
-        # Compute velocity supervision loss.
-        loss_4 = compute_velocity_supervision_loss(
-                speed_data=speed_data,
-                poses=poses,
-                poses_inv=poses_inv,
-                frame_step=cfgs["train"]["configuration"]["frame"]["frame_step"],
-                frames_fps=cfgs["train"]["configuration"]["frame"]["frame_fps"],
-                convert_speed_kmph_to_mps=True,
-            ) if condition_loss_4 else 0.0
 
         # Total loss.
         loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3 + w4 * loss_4
@@ -1733,7 +1741,7 @@ def validate_without_gt(
         )
 
         # Compute photometric and geometry consistency losses...
-        loss_1, loss_3 = compute_photo_and_geometry_loss(
+        loss_1, loss_3, _ = compute_photo_and_geometry_loss(
             tgt_img=tgt_img,
             ref_imgs=ref_imgs,
             intrinsics=intrinsics,
@@ -1747,6 +1755,7 @@ def validate_without_gt(
             with_auto_mask=False,
             padding_mode=cfgs["experiment_settings"]["padding_mode"],
             rotation_mode=cfgs["experiment_settings"]["rotation_matrix_mode"],
+            velocity_supervision_loss_params=None,
             writer_obj_tag='{:s}_{:d}'.format(writer_prefix_tag, i),
             writer_obj_step=epoch,
             writer_obj=output_writers[i] if log_outputs and i < len(output_writers) else None,

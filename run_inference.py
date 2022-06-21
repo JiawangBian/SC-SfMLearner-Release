@@ -423,7 +423,7 @@ def main():
 
     # CSV header: 20 variables.
     csv_log_full_header_list = [
-        #  Index and video information.
+        #  Index, test drive id, and video information.
         'index',
         'test_drive_id',
         'camera_view',
@@ -447,6 +447,9 @@ def main():
         'theta_x1',
         'theta_y1',
         'theta_z1',
+        # Telemetry data: latitude and longitude.
+        'latitude',
+        'longitude'
     ]
 
     print(f'\n[ Creating a CSV file to save data per iteration (e.g., validation losses and odometry). ]')
@@ -637,11 +640,15 @@ def validate_without_gt(
         #
         intrinsics = batch['camera_intrinsics'].to(device)
 
-        # 4) Telemetry data: speed
+        # 4) Telemetry data: Latitude, longitude, speed data.
         #
         speed_data = None
+        latitude_data = None
+        longitude_data = None
         if return_telemetry:
-            speed_data = batch['telemetry_data/speed']
+            # speed_data = batch['telemetry_data/speed'] <-- Not ready.
+            latitude_data = batch["telemetry_data/latitude"]
+            longitude_data = batch["telemetry_data/longitude"]
 
         # 5) Camera view, test drive ID, video clip indices.
         #
@@ -762,13 +769,30 @@ def validate_without_gt(
             )
 
             # ----------------------------------------------------------------------------------------------------------
-            # 3) Log speed data.
+            # 3) Log telemetry data: Speed, latitude, and longitude data.
             # ----------------------------------------------------------------------------------------------------------
 
+            # Speed data.
             if speed_data is not None and return_telemetry:
                 writer_obj.add_scalar(
                     tag='Telemetry_data/{:s}_speed'.format(writer_prefix_tag.lower()),
                     scalar_value=speed_data[0],
+                    global_step=i,
+                )
+
+            # Latitude data.
+            if latitude_data is not None and return_telemetry:
+                writer_obj.add_scalar(
+                    tag='Telemetry_data/{:s}_latitude'.format(writer_prefix_tag.lower()),
+                    scalar_value=latitude_data[0],
+                    global_step=i,
+                )
+
+            # Longitude data.
+            if longitude_data is not None and return_telemetry:
+                writer_obj.add_scalar(
+                    tag='Telemetry_data/{:s}_longitude'.format(writer_prefix_tag.lower()),
+                    scalar_value=longitude_data[0],
                     global_step=i,
                 )
 
@@ -913,7 +937,7 @@ def validate_without_gt(
         )
 
         # Compute photometric and geometry consistency losses...
-        loss_1, loss_3 = compute_photo_and_geometry_loss(
+        loss_1, loss_3, _ = compute_photo_and_geometry_loss(
             tgt_img=tgt_img,
             ref_imgs=ref_imgs,
             intrinsics=intrinsics,
@@ -927,6 +951,7 @@ def validate_without_gt(
             with_auto_mask=False,
             padding_mode=cfgs["experiment_settings"]["padding_mode"],
             rotation_mode=cfgs["experiment_settings"]["rotation_matrix_mode"],
+            velocity_supervision_loss_params=None,
             writer_obj_tag='{:s}'.format(writer_prefix_tag),
             writer_obj_step=i,
             writer_obj=writer_obj if enable_log_data else None,
@@ -1068,7 +1093,7 @@ def validate_without_gt(
         # Get poses data every iteration to be stored in a CSV file.
         # --------------------------------------------------------------------------------------------------------------
 
-        # List of camera poses, i.e., target w.r.t. reference frames.
+        # List of camera poses, i.e., target w.r.t. reference frames 0/1.
         camera_poses_data_list = []
 
         # Loop over pose data.
@@ -1101,7 +1126,7 @@ def validate_without_gt(
 
         sample_idx = 0
 
-        # Video information list.
+        # Video information list (index, test drive id, camera video, video clip indices).
         video_info_list = [i, test_drive_id[sample_idx], camera_view[sample_idx], video_clip_indices_str]
 
         # Losses data list.
@@ -1112,8 +1137,14 @@ def validate_without_gt(
             loss_3,
         ]
 
-        # Camera pose between two consecutive frames (e.g., target frame w.r.t. reference frame)
-        single_row_csv_file = video_info_list + losses_data_list + camera_poses_data_list
+        # Telemetry data: Latitude and longitude.
+        telemetry_data_list = [
+            latitude_data[sample_idx],
+            longitude_data[sample_idx]
+        ]
+
+        # Single row in the CSV file.
+        single_row_csv_file = video_info_list + losses_data_list + camera_poses_data_list + telemetry_data_list
 
         with open('{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"]), 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')

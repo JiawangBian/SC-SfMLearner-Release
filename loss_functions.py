@@ -216,6 +216,7 @@ def compute_photo_and_geometry_loss(
     with_auto_mask,
     padding_mode,
     rotation_mode='euler',
+    velocity_supervision_loss_params=None,
     writer_obj_tag='photo_geom_loss',
     writer_obj_step=0,
     writer_obj=None,
@@ -235,6 +236,7 @@ def compute_photo_and_geometry_loss(
 
     photo_loss = 0
     geometry_loss = 0
+    velocity_supervision_loss = 0
 
     num_scales = min(len(tgt_depth), max_scales)
 
@@ -278,7 +280,9 @@ def compute_photo_and_geometry_loss(
                 _, h_scaled, w_scaled = tgt_depth_scaled[0].size()
 
                 writer_obj.add_image(
-                    tag='{}_depth_scales/target_ref_depth_scaled_{}_{}x{}'.format(writer_obj_tag, s, h_scaled, w_scaled),
+                    tag='{}_depth_scales/target_ref_depth_scale_{}_size_{}x{}'.format(
+                        writer_obj_tag, s, h_scaled, w_scaled
+                    ),
                     img_tensor=tensor2array(
                         torch.cat([tgt_depth_scaled[0], ref_depth_scaled[0]], dim=2),
                         max_value=None,
@@ -292,7 +296,7 @@ def compute_photo_and_geometry_loss(
             # ----------------------------------------------------------------------------------------------------------
 
             # Computing the pairwise loss: Target w.r.t. reference data.
-            photo_loss1, geometry_loss1 = \
+            photo_loss1, geometry_loss1, vel_superv_loss1 = \
                 compute_pairwise_loss(
                     tgt_img_scaled, ref_img_scaled,
                     tgt_depth_scaled, ref_depth_scaled,
@@ -300,14 +304,17 @@ def compute_photo_and_geometry_loss(
                     with_ssim, with_mask, with_auto_mask,
                     padding_mode,
                     rotation_mode=rotation_mode,
-                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref{}'.format(writer_obj_tag, ref_img_idx),
+                    velocity_supervision_loss_params=velocity_supervision_loss_params,
+                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref{}_scale_{}'.format(
+                        writer_obj_tag, ref_img_idx, s
+                    ),
                     writer_obj_step=writer_obj_step,
                     writer_obj=writer_obj,
                     device=device,
                 )
 
             # Computing the pairwise loss: Target w.r.t. reference data reversed.
-            photo_loss2, geometry_loss2 = \
+            photo_loss2, geometry_loss2, vel_superv_loss2 = \
                 compute_pairwise_loss(
                     ref_img_scaled, tgt_img_scaled,
                     ref_depth_scaled, tgt_depth_scaled,
@@ -315,7 +322,10 @@ def compute_photo_and_geometry_loss(
                     with_ssim, with_mask, with_auto_mask,
                     padding_mode,
                     rotation_mode=rotation_mode,
-                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref{}_reversed'.format(writer_obj_tag, ref_img_idx),
+                    velocity_supervision_loss_params=velocity_supervision_loss_params,
+                    writer_obj_tag='{}_pairwise_loss_target_wrt_ref{}_reversed_scale_{}'.format(
+                        writer_obj_tag, ref_img_idx, s
+                    ),
                     writer_obj_step=writer_obj_step,
                     writer_obj=writer_obj,
                     device=device,
@@ -327,13 +337,17 @@ def compute_photo_and_geometry_loss(
             # Geometry consistency loss.
             geometry_loss += (geometry_loss1 + geometry_loss2)
 
+            # Velocity supervision loss.
+            if velocity_supervision_loss_params is not None:
+                velocity_supervision_loss += (vel_superv_loss1 + vel_superv_loss2)
+
         # --------------------------------------------------------------------------------------------------------------
         # Reference image index...
         # --------------------------------------------------------------------------------------------------------------
 
         ref_img_idx += 1
 
-    return photo_loss, geometry_loss
+    return photo_loss, geometry_loss, velocity_supervision_loss
 
 ########################################################################################################################
 #
@@ -354,6 +368,7 @@ def compute_pairwise_loss(
     with_auto_mask,
     padding_mode,
     rotation_mode='euler',
+    velocity_supervision_loss_params=None,
     writer_obj_tag='pairwise_loss',
     writer_obj_step=0,
     writer_obj=None,
@@ -470,6 +485,54 @@ def compute_pairwise_loss(
         )
 
     # ------------------------------------------------------------------------------------------------------------------
+    # Velocity supervision loss.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    velocity_supervision_loss = 0.
+
+    if velocity_supervision_loss_params is not None:
+
+        # Sampling period (single frame) in seconds.
+        sampling_period = 1. / float(velocity_supervision_loss_params["frame_fps"])
+
+        # Total time difference between target and reference frames in seconds.
+        delta_time = sampling_period * velocity_supervision_loss_params["frame_step"]
+
+        # Ground-truth distance estimated from speed data (in m/s) and the sampling period
+        # between the target and reference frames.
+        ground_truth_distance = velocity_supervision_loss_params["speed_data"] * delta_time
+
+        # Translation vector retrieved from the pose matrix.
+        translation_vector = pose_matrix_3x4[:, :, 3]
+
+        # Predicted distance computed as the L2-norm of the translation vector.
+        pred_distance = LA.vector_norm(translation_vector, ord=2, dim=-1)
+
+        # Difference between the predicted (magnitude of the translation vector) and the ground-truth distances.
+        velocity_supervision_loss += (pred_distance - ground_truth_distance).abs().mean()
+
+        # Log data...
+        if writer_obj is not None:
+
+            writer_obj.add_scalar(
+                tag='{}/velocity_supervision_loss'.format(writer_obj_tag),
+                scalar_value=velocity_supervision_loss,
+                global_step=writer_obj_step
+            )
+
+            writer_obj.add_scalar(
+                tag='{}/pred_distance'.format(writer_obj_tag),
+                scalar_value=pred_distance,
+                global_step=writer_obj_step
+            )
+
+            writer_obj.add_scalar(
+                tag='{}/ground_truth_distance'.format(writer_obj_tag),
+                scalar_value=ground_truth_distance,
+                global_step=writer_obj_step
+            )
+
+    # ------------------------------------------------------------------------------------------------------------------
     # Auto mask...
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -530,7 +593,7 @@ def compute_pairwise_loss(
     reconstruction_loss = mean_on_mask(diff_img, valid_mask, device=device)
     geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask, device=device)
 
-    return reconstruction_loss, geometry_consistency_loss
+    return reconstruction_loss, geometry_consistency_loss, velocity_supervision_loss
 
 ########################################################################################################################
 #
