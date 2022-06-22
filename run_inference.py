@@ -415,15 +415,16 @@ def main():
     )
 
     # ------------------------------------------------------------------------------------------------------------------
-    # CSV file to store video data, validation losses, camera translation and orientation (between two frames):
+    # CSV file to store video data, validation losses, camera translation and orientation (between two frames),
+    # telemetry data:
     # ------------------------------------------------------------------------------------------------------------------
 
     # CSV file.
     csv_log_full_ffname = '{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"])
 
-    # CSV header: 20 variables.
+    # CSV header: 23 variables.
     csv_log_full_header_list = [
-        #  Index, test drive id, and video information.
+        # Index, test drive id, camera view, and video clip indices.
         'index',
         'test_drive_id',
         'camera_view',
@@ -447,9 +448,10 @@ def main():
         'theta_x1',
         'theta_y1',
         'theta_z1',
-        # Telemetry data: latitude and longitude.
+        # Telemetry data: latitude, longitude, and speed data (Km/h)
         'latitude',
-        'longitude'
+        'longitude',
+        'speed_kmph'
     ]
 
     print(f'\n[ Creating a CSV file to save data per iteration (e.g., validation losses and odometry). ]')
@@ -776,7 +778,7 @@ def validate_without_gt(
             if speed_data is not None and return_telemetry:
                 writer_obj.add_scalar(
                     tag='Telemetry_data/{:s}_speed'.format(writer_prefix_tag.lower()),
-                    scalar_value=speed_data[0],
+                    scalar_value=speed_data[0].item(),
                     global_step=i,
                 )
 
@@ -784,7 +786,7 @@ def validate_without_gt(
             if latitude_data is not None and return_telemetry:
                 writer_obj.add_scalar(
                     tag='Telemetry_data/{:s}_latitude'.format(writer_prefix_tag.lower()),
-                    scalar_value=latitude_data[0],
+                    scalar_value=latitude_data[0].item(),
                     global_step=i,
                 )
 
@@ -792,7 +794,7 @@ def validate_without_gt(
             if longitude_data is not None and return_telemetry:
                 writer_obj.add_scalar(
                     tag='Telemetry_data/{:s}_longitude'.format(writer_prefix_tag.lower()),
-                    scalar_value=longitude_data[0],
+                    scalar_value=longitude_data[0].item(),
                     global_step=i,
                 )
 
@@ -1137,10 +1139,14 @@ def validate_without_gt(
             loss_3,
         ]
 
-        # Telemetry data: Latitude and longitude.
+        # Telemetry data: Latitude, longitude, speed (km/h).
         telemetry_data_list = [
-            latitude_data[sample_idx],
-            longitude_data[sample_idx]
+            # Latitude.
+            'None' if latitude_data is None else latitude_data[sample_idx].item(),
+            # Longitude.
+            'None' if longitude_data is None else longitude_data[sample_idx].item(),
+            # Speed data (km/h).
+            'None' if speed_data is None else speed_data[sample_idx].item()
         ]
 
         # Single row in the CSV file.
