@@ -316,3 +316,50 @@ def get_hyperparameters_dict(
 
     return dict(hparams_list)
 
+########################################################################################################################
+#
+# Weight factor
+#
+########################################################################################################################
+
+
+def create_weight_factor_list(value):
+
+    """
+
+    Create a list of weight factors (to be applied during model training) to a single term in the loss function.
+
+    - If value is a scalar (e.g., 0.01) this value is returned.
+    - If value is a string, a list is returned, where every item is a weight factor which appears repeated
+        according to the number of specified iterations. Thus, the input value must follow the pattern:
+
+            "n_1:w_1; n_2:w_2; ..., n_M:w_M".
+
+        Here, n_i and w_i stand for the i-th number of iterations and the corresponding weight factor, respectively.
+        For instance, "10:0.01; 10:0.02; 10:0.03; 10:0.04; 10:0.05; 200:0.05".
+
+    """
+
+    if isinstance(value, float) or isinstance(value, int):
+
+        return value
+
+    elif isinstance(value, str):
+
+        epochs_weights_list = value.replace(" ", "").split(";")
+
+        weight_factor_list = []
+
+        for str_item in epochs_weights_list:
+
+            # Get total epochs for the current weight value.
+            num_epochs = int(str_item.split(':')[0])
+
+            # Get the weight factor.
+            weight = float(str_item.split(':')[1])
+
+            # Augment the list.
+            weight_factor_list += num_epochs * [weight]
+
+        return weight_factor_list
+

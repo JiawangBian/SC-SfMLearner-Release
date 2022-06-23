@@ -648,7 +648,7 @@ def validate_without_gt(
         latitude_data = None
         longitude_data = None
         if return_telemetry:
-            # speed_data = batch['telemetry_data/speed'] <-- Not ready.
+            speed_data = batch['telemetry_data/speed']
             latitude_data = batch["telemetry_data/latitude"]
             longitude_data = batch["telemetry_data/longitude"]
 

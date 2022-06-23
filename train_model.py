@@ -17,7 +17,7 @@ from pathlib import Path
 from data_loader_ml.dataset import YaakIterableDataset
 from data_loader_ml.tools.custom_transforms import Compose, TRANSFORM_DICT
 from utils import tensor2array, save_checkpoint, count_parameters, print_batch, normalize_image
-from utils import get_hyperparameters_dict
+from utils import get_hyperparameters_dict, create_weight_factor_list
 from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss
 from logger import TermLogger, AverageMeter
 from torch.utils.tensorboard import SummaryWriter
@@ -254,6 +254,18 @@ def main():
     print('\n[ Initializing Tensorboard ]')
     print('\t- Train log path: {}'.format(tensorboard_train_log_dir))
     print('\t- Val log path: {}'.format(tensorboard_val_log_dir))
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Velocity-scaling weight loss.
+    # ------------------------------------------------------------------------------------------------------------------
+
+    velocity_weight_loss = create_weight_factor_list(value=cfgs["experiment_settings"]["velocity_scaling_weight"])
+
+    assert len(velocity_weight_loss) == args.epochs, \
+        f"[ Error ] velocity_weight_loss must be of size {args.epochs}. " \
+        f"Currently, it has as size of {len(velocity_weight_loss)}."
+
+    print(f"\n[ Velocity supervision loss ] Weight factor: {velocity_weight_loss}")
 
     # ------------------------------------------------------------------------------------------------------------------
     # Transformations applied on data.
@@ -643,6 +655,7 @@ def main():
             pose_net=pose_net,
             optimizer=optimizer,
             epoch=epoch,
+            velocity_weight_loss=velocity_weight_loss,
             batch_size=args.batch_size,
             max_iterations=args.max_train_iterations,
             logger=logger,
@@ -754,6 +767,7 @@ def train(
     pose_net,
     optimizer,
     epoch,
+    velocity_weight_loss,
     batch_size,
     max_iterations,
     logger,
@@ -821,8 +835,15 @@ def train(
     # Geometry consistency loss weight.
     w3 = cfgs["experiment_settings"]["geometry_consistency_loss_weight"]
 
-    # Velocity-scaling weight loss.
-    w4 = cfgs["experiment_settings"]["velocity_scaling_weight"]
+    # Velocity supervision loss.
+    w4 = None
+    if isinstance(velocity_weight_loss, list):
+
+        w4 = velocity_weight_loss[epoch]
+
+    elif isinstance(velocity_weight_loss, float) or isinstance(velocity_weight_loss, int):
+
+        w4 = velocity_weight_loss
 
     # ------------------------------------------------------------------------------------------------------------------
     # Set the models to "training mode".
@@ -1248,6 +1269,38 @@ def train(
             train_writer.add_scalar(
                 tag='Train_loss_scaled_components/total_loss',
                 scalar_value=total_loss,
+                global_step=epoch
+            )
+
+            # ----------------------------------------------------------------------------------------------------------
+            # 4-3) Weight loss factors.
+            # ----------------------------------------------------------------------------------------------------------
+
+            # Photometric loss (w1).
+            train_writer.add_scalar(
+                tag='Train_weight_loss_factors/photometric_loss',
+                scalar_value=w1,
+                global_step=epoch
+            )
+
+            # Smoothness loss (w2).
+            train_writer.add_scalar(
+                tag='Train_weight_loss_factors/smoothness_loss',
+                scalar_value=w2,
+                global_step=epoch
+            )
+
+            # Geometry consistency loss (w3).
+            train_writer.add_scalar(
+                tag='Train_weight_loss_factors/geometry_consistency_loss',
+                scalar_value=w3,
+                global_step=epoch
+            )
+
+            # Velocity supervision loss (w4).
+            train_writer.add_scalar(
+                tag='Train_weight_loss_factors/velocity_supervision_loss',
+                scalar_value=w4,
                 global_step=epoch
             )
 
