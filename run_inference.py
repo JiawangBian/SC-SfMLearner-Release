@@ -24,6 +24,7 @@ from pathlib import Path
 from skimage import color
 from data_loader_ml.dataset import YaakIterableDataset
 from data_loader_ml.tools.custom_transforms import Compose, TRANSFORM_DICT
+from data_loader_ml.tools.utils import load_test_drive_ids_from_txt_file
 from utils import tensor2array, save_checkpoint, count_parameters, print_batch, normalize_image
 from utils import get_hyperparameters_dict
 from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss
@@ -145,379 +146,412 @@ def main():
     global best_error, n_iter
 
     # ------------------------------------------------------------------------------------------------------------------
-    # Paths...
+    # List of drive ids
     # ------------------------------------------------------------------------------------------------------------------
 
-    # Time instant.
-    timestamp = datetime.datetime.now().strftime("%d-%m-%Y-%H%MH")
+    cfgs_drive_ids = cfgs["val"]["dataset"]["drive_ids"]
 
-    # Experiment name
-    experiment_name = cfgs["experiment_settings"]["experiment_name"]
+    drive_ids_list = []
 
-    # Path to save data.
-    save_path = '{}/{}/{}'.format(
-        cfgs["experiment_settings"]["checkpoints_path"],
-        experiment_name,
-        timestamp
-    )
+    # If drive_ids is specified as a text file, load the data (into a list) from that file.
+    if isinstance(cfgs_drive_ids, str) and cfgs_drive_ids.endswith('.txt'):
+        drive_ids_list = load_test_drive_ids_from_txt_file(cfgs_drive_ids, verbose=True)
 
-    print('[ Experimental results ] Save path: {}'.format(save_path))
+    # Otherwise, load the data from the list of test drive ids.
+    elif isinstance(cfgs_drive_ids, list):
+        drive_ids_list = cfgs_drive_ids
 
-    # If the path does not exist, it is created.
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-        print('\t- Creating directory: {}'.format(save_path))
+    N = len(drive_ids_list)
 
-    # Check the value of the arguments pretrained_disp and pretrained_pose.
-    pretrained_disparity_model_file = None if cfgs["experiment_settings"]["pretrained_disp"] == "None" \
-        else cfgs["experiment_settings"]["pretrained_disp"]
-
-    pretrained_pose_model_file = None if cfgs["experiment_settings"]["pretrained_pose"] == "None" \
-        else cfgs["experiment_settings"]["pretrained_pose"]
+    print("[ Drive IDs ]")
+    for index, current_drive_id in enumerate(drive_ids_list):
+        print(f"\t[ {index+1} of {N} ] {current_drive_id}")
+    print(" ")
 
     # ------------------------------------------------------------------------------------------------------------------
-    # Validation hyper-parameters.
+    # Perform model inference on each drive ID.
     # ------------------------------------------------------------------------------------------------------------------
 
-    wandb_hparams_dict = get_hyperparameters_dict(
-        device=device,
-        epochs=0,
-        batch_size=args.batch_size,
-        max_train_iterations=0,
-        max_val_iterations=args.max_val_iterations,
-        cfgs=cfgs,
-        mode="val",
-        save_path=save_path,
-        verbose=True
-    )
+    print("[ Model inference on each Drive ID ]\n")
 
-    # ------------------------------------------------------------------------------------------------------------------
-    # Init Weights & Biases...
-    # ------------------------------------------------------------------------------------------------------------------
+    for index, current_drive_id in enumerate(drive_ids_list):
 
-    tensorboard_root_logdir = "{}/tb".format(save_path)
+        # --------------------------------------------------------------------------------------------------------------
+        # Paths...
+        # --------------------------------------------------------------------------------------------------------------
 
-    if cfgs["experiment_settings"]["wandb_enable"]:
+        # Checkpoints path.
+        checkpoints_path = cfgs["experiment_settings"]["checkpoints_path"]
 
-        # The name of the project where you're sending the new run.
-        wandb_project_name = cfgs["experiment_settings"]["wandb_project_name"]
+        # Experiment name
+        experiment_name = cfgs["experiment_settings"]["experiment_name"]
 
-        # An absolute path to a directory where metadata will be stored. When you call download() on an artifact,
-        # this is the directory where downloaded files will be saved. By default this is the ./wandb directory.
-        wandb_dir = cfgs["experiment_settings"]["wandb_dir"]
+        # Time instant.
+        timestamp = datetime.datetime.now().strftime("%d-%m-%Y-%H%MH")
+
+        # Path to save data.
+        save_path = f"{checkpoints_path}/{experiment_name}/{current_drive_id}/{timestamp}"
+
+        print(f'[ Experimental results ][ {index+1} of {N} ] Drive ID = {current_drive_id}')
+        print(f'\t- Save path: {save_path}')
 
         # If the path does not exist, it is created.
-        if not os.path.exists(wandb_dir):
-            os.makedirs(wandb_dir)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+            print(f'\t- Creating directory: {save_path}')
 
-        # When using several event log directories, please call `wandb.tensorboard.patch(root_logdir="...")`
-        # before `wandb.init`
-        wandb.tensorboard.patch(root_logdir=tensorboard_root_logdir)
+        # Check the value of the arguments pretrained_disp and pretrained_pose.
+        pretrained_disparity_model_file = None if cfgs["experiment_settings"]["pretrained_disp"] == "None" \
+            else cfgs["experiment_settings"]["pretrained_disp"]
 
-        # Starts a new run to track and log to W&B.
-        # Pass `sync_tensorboard=True`, to plot your TensorBoard files
-        wandb.init(
-            dir=wandb_dir,
-            config=wandb_hparams_dict,
-            project=wandb_project_name,
-            sync_tensorboard=True
+        pretrained_pose_model_file = None if cfgs["experiment_settings"]["pretrained_pose"] == "None" \
+            else cfgs["experiment_settings"]["pretrained_pose"]
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Validation hyper-parameters.
+        # --------------------------------------------------------------------------------------------------------------
+
+        wandb_hparams_dict = get_hyperparameters_dict(
+            device=device,
+            epochs=0,
+            batch_size=args.batch_size,
+            max_train_iterations=0,
+            max_val_iterations=args.max_val_iterations,
+            cfgs=cfgs,
+            mode="val",
+            save_path=save_path,
+            verbose=True
         )
 
-        print('\n[ Initializing Weights & Biases ]')
-        print('\t- Project name: {}'.format(wandb_project_name))
-        print('\t- Metadata path: {}'.format(wandb_dir))
-        print('\t- Tensorboard root log dir: {}'.format(tensorboard_root_logdir))
+        # --------------------------------------------------------------------------------------------------------------
+        # Init Weights & Biases...
+        # --------------------------------------------------------------------------------------------------------------
+
+        tensorboard_root_logdir = "{}/tb".format(save_path)
+
+        if cfgs["experiment_settings"]["wandb_enable"]:
+
+            # The name of the project where you're sending the new run.
+            wandb_project_name = cfgs["experiment_settings"]["wandb_project_name"]
+
+            # An absolute path to a directory where metadata will be stored. When you call download() on an artifact,
+            # this is the directory where downloaded files will be saved. By default this is the ./wandb directory.
+            wandb_dir = cfgs["experiment_settings"]["wandb_dir"]
+
+            # If the path does not exist, it is created.
+            if not os.path.exists(wandb_dir):
+                os.makedirs(wandb_dir)
+
+            # When using several event log directories, please call `wandb.tensorboard.patch(root_logdir="...")`
+            # before `wandb.init`
+            wandb.tensorboard.patch(root_logdir=tensorboard_root_logdir)
+
+            # Starts a new run to track and log to W&B.
+            # Pass `sync_tensorboard=True`, to plot your TensorBoard files
+            wandb.init(
+                dir=wandb_dir,
+                config=wandb_hparams_dict,
+                project=wandb_project_name,
+                sync_tensorboard=True
+            )
+
+            print('\n[ Initializing Weights & Biases ]')
+            print('\t- Project name: {}'.format(wandb_project_name))
+            print('\t- Metadata path: {}'.format(wandb_dir))
+            print('\t- Tensorboard root log dir: {}'.format(tensorboard_root_logdir))
+            print(' ')
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Summary writers...
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Tensorboard train/validation log directories...
+        tensorboard_val_log_dir = "{}/val".format(tensorboard_root_logdir)
+
+        # Validation summary writer.
+        val_writer = None
+        if cfgs["experiment_settings"]["log_output"]:
+            val_writer = SummaryWriter(tensorboard_val_log_dir, flush_secs=10, max_queue=100)
+
+        print('\n[ Initializing Tensorboard ]')
+        print('\t- Val log path: {}'.format(tensorboard_val_log_dir))
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Transformations applied on data during the validation stage.
+        # --------------------------------------------------------------------------------------------------------------
+
+        print("\n[ Creating validation data transformations ]")
+
+        # Transformations applied on validation data.
+        val_transform_cfgs = cfgs["val"]["configuration"]["transformation"]["series"]
+        val_transform = Compose(
+            [TRANSFORM_DICT[fn](**kwargs) for fn, kwargs in val_transform_cfgs.items()]
+        )
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Validation dataset paths.
+        # --------------------------------------------------------------------------------------------------------------
+
+        print("\n[ Validation dataset paths ]")
+        print("\t- Video sequences path: {}".format(cfgs["val"]["dataset"]["rootpath"]))
+        print("\t- Camera calibration path: {}".format(cfgs["val"]["dataset"]["camera_calibration"]))
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Create the validation dataset.
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Overwrite current drive id before creating an instance of the YaakIterableDataset class.
+        cfgs["val"]["dataset"]["drive_ids"] = [str(current_drive_id)]
+
+        print('\n[ Creating the validation dataset using the YaakIterableDataset class ]')
+        print(f'\t- Drive ID = {cfgs["val"]["dataset"]["drive_ids"]}')
+        print(f'\t- Every video in the validation set will be over-sampled by '
+              f'N = {cfgs["val"]["configuration"]["sampling"]["oversampling"]} iterations.')
         print(' ')
 
-    # ------------------------------------------------------------------------------------------------------------------
-    # Summary writers...
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # Tensorboard train/validation log directories...
-    tensorboard_val_log_dir = "{}/val".format(tensorboard_root_logdir)
-
-    # Validation summary writer.
-    val_writer = None
-    if cfgs["experiment_settings"]["log_output"]:
-        val_writer = SummaryWriter(tensorboard_val_log_dir, flush_secs=10, max_queue=100)
-
-    print('\n[ Initializing Tensorboard ]')
-    print('\t- Val log path: {}'.format(tensorboard_val_log_dir))
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Transformations applied on data during the validation stage.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    print("\n[ Creating validation data transformations ]")
-
-    # Transformations applied on validation data.
-    val_transform_cfgs = cfgs["val"]["configuration"]["transformation"]["series"]
-    val_transform = Compose(
-        [TRANSFORM_DICT[fn](**kwargs) for fn, kwargs in val_transform_cfgs.items()]
-    )
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Validation dataset paths.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    print("\n[ Validation dataset paths ]")
-    print("\t- Video sequences path: {}".format(cfgs["val"]["dataset"]["rootpath"]))
-    print("\t- Camera calibration path: {}".format(cfgs["val"]["dataset"]["camera_calibration"]))
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Create the validation dataset.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    print('\n[ Creating the validation dataset using the YaakIterableDataset class ]')
-    print('\t- Every video in the validation set will be over-sampled by N = {} iterations.'.format(
-            cfgs["val"]["configuration"]["sampling"]["oversampling"]
-        )
-    )
-    print(' ')
-
-    val_dataset = YaakIterableDataset(
-        start=0,
-        end=args.max_val_iterations,
-        dataset=cfgs["val"]["dataset"],
-        config_frames=cfgs["val"]["configuration"]["frame"],
-        config_sampling=cfgs["val"]["configuration"]["sampling"],
-        config_returns=cfgs["val"]["configuration"]["return"],
-        transform=val_transform,
-        device_id=torch.cuda.current_device(),
-        device_name="gpu" if enable_gpu else "cpu",
-        verbose=True,
-    )
-    print(' ')
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Create validation data loaders.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    print("\n[ Creating data loaders ]")
-    print("\t- Creating a validation data loader.")
-
-    # Validation loader.
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=cfgs["experiment_settings"]["workers"],
-        pin_memory=False,
-    )
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Create models: Disparity and Pose networks.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    print("\n[ Creating models ] Disparity (DispResNet) and Pose (PoseResNet) networks.")
-
-    if cfgs["experiment_settings"]["with_pretrain"]:
-        print('\t- The disparity (encoder) and pose network parameters'
-              ' will be initialized from pretrained weights (e.g., ImageNet).')
-
-    print("\t- DispResNet (num_layers = {}, pretrain = {}) | Device = {}".format(
-                cfgs["experiment_settings"]["resnet_layers"],
-                cfgs["experiment_settings"]["with_pretrain"],
-                device
-        )
-    )
-    print("\t- PoseResNet (num_layers = 18, pretrain = {}) | Device = {}".format(
-            cfgs["experiment_settings"]["with_pretrain"],
-            device
-        )
-    )
-
-    # Disparity network.
-    disp_net = \
-        models.DispResNet(
-            num_layers=cfgs["experiment_settings"]["resnet_layers"],
-            pretrained=cfgs["experiment_settings"]["with_pretrain"],
-            verbose=False
-        ).to(device)
-
-    # Pose network.
-    pose_net = models.PoseResNet(
-        num_layers=18,
-        pretrained=cfgs["experiment_settings"]["with_pretrain"]
-    ).to(device)
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Initialize DispResNet/PoseResNet networks with pre-trained weights stored on disk...
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # Load pre-trained disparity network parameters.
-    if pretrained_disparity_model_file:
-        print('\n[ Initializing disparity network (DispResNet) with pretrained weights stored on disk ]')
-        print("\t- File: {}".format(pretrained_disparity_model_file))
-        weights = torch.load(pretrained_disparity_model_file)
-        disp_net.load_state_dict(weights['state_dict'], strict=False)
-        print("\t- The model parameters have been updated.")
-
-    # Load pre-trained pose network parameters.
-    if pretrained_pose_model_file:
-        print('\n[ Initializing the pose network (PoseResNet) with pretrained weights stored on disk ]')
-        print("\t- File: {}".format(pretrained_pose_model_file))
-        weights = torch.load(pretrained_pose_model_file)
-        pose_net.load_state_dict(weights['state_dict'], strict=False)
-        print("\t- The model parameters have been updated.")
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Count the number of parameters of the disparity and pose networks.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # Disparity network parameters expressed in M.
-    disp_net_num_params = count_parameters(disp_net) / 1e6
-
-    # Pose network parameters in M.
-    pose_net_num_params = count_parameters(pose_net) / 1e6
-
-    print('\n[ Count model parameters ]')
-    print('\t- DispResNet | N = {:0.2f}M params'.format(disp_net_num_params))
-    print('\t- PoseResNet | N = {:0.2f}M params'.format(pose_net_num_params))
-    print(' ')
-
-    # Adding the disparity network's parameter count to tensorboard.
-    val_writer.add_text(
-        tag='Parameter_count/disp_resnet',
-        text_string='{:0.2f}M'.format(disp_net_num_params),
-        global_step=0
-    )
-
-    # Adding the pose network's parameter count to tensorboard.
-    val_writer.add_text(
-        tag='Parameter_count/pose_resnet',
-        text_string='{:0.2f}M'.format(pose_net_num_params),
-        global_step=0
-    )
-
-    val_writer.flush()
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Wrapping the models with torch.nn.DataParallel...
-    # ------------------------------------------------------------------------------------------------------------------
-
-    disp_net = torch.nn.DataParallel(disp_net, output_device=0)
-    pose_net = torch.nn.DataParallel(pose_net, output_device=0)
-
-    disp_net = disp_net.to(device)
-    pose_net = pose_net.to(device)
-
-    print('\n[ Data parallelism (with torch.nn.DataParallel) ]')
-    print('\t- [ Disparity network ] Device IDs = {} | Output device = {}'.format(
-            disp_net.device_ids,
-            disp_net.output_device
-        )
-    )
-    print('\t- [ Pose network ] Device IDs = {} | Output device = {}'.format(
-            pose_net.device_ids,
-            pose_net.output_device
-        )
-    )
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # CSV file to store video data, validation losses, camera translation and orientation (between two frames),
-    # telemetry data:
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # CSV file.
-    csv_log_full_ffname = '{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"])
-
-    # CSV header: 23 variables.
-    csv_log_full_header_list = [
-        # Index, test drive id, camera view, and video clip indices.
-        'index',
-        'test_drive_id',
-        'camera_view',
-        'video_clip_indices',
-        # Losses.
-        'total_loss',
-        'photometric_loss',
-        'smoothness_loss',
-        'geometry_consistency_loss',
-        # Camera pose: Target frame w.r.t. reference frame 0.
-        'x0',
-        'y0',
-        'z0',
-        'theta_x0',
-        'theta_y0',
-        'theta_z0',
-        # Camera pose: Target frame w.r.t. reference frame 1.
-        'x1',
-        'y1',
-        'z1',
-        'theta_x1',
-        'theta_y1',
-        'theta_z1',
-        # Telemetry data: latitude, longitude, and speed data (Km/h)
-        'latitude',
-        'longitude',
-        'speed_kmph'
-    ]
-
-    print(f'\n[ Creating a CSV file to save data per iteration (e.g., validation losses and odometry). ]')
-    print(f'\t- CSV File: {csv_log_full_ffname}')
-    print(f'\t- CSV Header: ')
-    for h in csv_log_full_header_list:
-        print(f"\t\t- {h}")
-
-    with open(csv_log_full_ffname, 'w') as csvfile:
-        writer = csv.writer(csvfile, delimiter='\t')
-        writer.writerow(csv_log_full_header_list)
-
-    ####################################################################################################################
-    #
-    # Model inference and validation...
-    #
-    ####################################################################################################################
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Creating a Logger.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    total_videos = val_dataset.get_num_videos
-
-    print('\n[ Start model inference and validation ] Total videos = {}'.format(total_videos))
-    print('')
-
-    # ------------------------------------------------------------------------------------------------------------------
-    # Evaluate the model, on the validation set, for N = max_val_iterations iterations.
-    # ------------------------------------------------------------------------------------------------------------------
-
-    errors, error_names = \
-        validate_without_gt(
-            cfgs=cfgs,
-            val_loader=val_loader,
-            disp_net=disp_net,
-            pose_net=pose_net,
-            writer_obj=val_writer,
-            writer_obj_tag="Val",
-            save_path=save_path,
-            return_telemetry=cfgs["val"]["configuration"]["return"]["telemetry"],
-            device=device,
+        val_dataset = YaakIterableDataset(
+            start=0,
+            end=args.max_val_iterations,
+            dataset=cfgs["val"]["dataset"],
+            config_frames=cfgs["val"]["configuration"]["frame"],
+            config_sampling=cfgs["val"]["configuration"]["sampling"],
+            config_returns=cfgs["val"]["configuration"]["return"],
+            transform=val_transform,
+            device_id=torch.cuda.current_device(),
+            device_name="gpu" if enable_gpu else "cpu",
             verbose=True,
         )
+        print(' ')
 
-    # Validation loss.
-    error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
-    print('[ Average validation loss ] {}'.format(error_string))
-    print(' ')
+        # --------------------------------------------------------------------------------------------------------------
+        # Create validation data loaders.
+        # --------------------------------------------------------------------------------------------------------------
 
-    # Write validation losses in tensorboard.
-    for error, name in zip(errors, error_names):
-        val_writer.add_scalar(tag=name, scalar_value=error, global_step=0)
+        print("\n[ Creating data loaders ]")
+        print("\t- Creating a validation data loader.")
 
-    # Flushes the event file to disk.
-    val_writer.flush()
+        # Validation loader.
+        val_loader = torch.utils.data.DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=cfgs["experiment_settings"]["workers"],
+            pin_memory=False,
+        )
 
-    # Closing operations...
-    val_writer.close()
+        # --------------------------------------------------------------------------------------------------------------
+        # Create models: Disparity and Pose networks.
+        # --------------------------------------------------------------------------------------------------------------
 
-    # ------------------------------------------------------------------------------------------------------------------
-    # Finish the wandb run to upload the TensorBoard logs to W & B.
-    # ------------------------------------------------------------------------------------------------------------------
+        print("\n[ Creating models ] Disparity (DispResNet) and Pose (PoseResNet) networks.")
 
-    if cfgs["experiment_settings"]["wandb_enable"]:
-        wandb.finish()
+        if cfgs["experiment_settings"]["with_pretrain"]:
+            print('\t- The disparity (encoder) and pose network parameters'
+                  ' will be initialized from pretrained weights (e.g., ImageNet).')
+
+        print("\t- DispResNet (num_layers = {}, pretrain = {}) | Device = {}".format(
+                    cfgs["experiment_settings"]["resnet_layers"],
+                    cfgs["experiment_settings"]["with_pretrain"],
+                    device
+            )
+        )
+        print("\t- PoseResNet (num_layers = 18, pretrain = {}) | Device = {}".format(
+                cfgs["experiment_settings"]["with_pretrain"],
+                device
+            )
+        )
+
+        # Disparity network.
+        disp_net = \
+            models.DispResNet(
+                num_layers=cfgs["experiment_settings"]["resnet_layers"],
+                pretrained=cfgs["experiment_settings"]["with_pretrain"],
+                verbose=False
+            ).to(device)
+
+        # Pose network.
+        pose_net = models.PoseResNet(
+            num_layers=18,
+            pretrained=cfgs["experiment_settings"]["with_pretrain"]
+        ).to(device)
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Initialize DispResNet/PoseResNet networks with pre-trained weights stored on disk...
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Load pre-trained disparity network parameters.
+        if pretrained_disparity_model_file:
+            print('\n[ Initializing disparity network (DispResNet) with pretrained weights stored on disk ]')
+            print("\t- File: {}".format(pretrained_disparity_model_file))
+            weights = torch.load(pretrained_disparity_model_file)
+            disp_net.load_state_dict(weights['state_dict'], strict=False)
+            print("\t- The model parameters have been updated.")
+
+        # Load pre-trained pose network parameters.
+        if pretrained_pose_model_file:
+            print('\n[ Initializing the pose network (PoseResNet) with pretrained weights stored on disk ]')
+            print("\t- File: {}".format(pretrained_pose_model_file))
+            weights = torch.load(pretrained_pose_model_file)
+            pose_net.load_state_dict(weights['state_dict'], strict=False)
+            print("\t- The model parameters have been updated.")
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Count the number of parameters of the disparity and pose networks.
+        # --------------------------------------------------------------------------------------------------------------
+
+        # Disparity network parameters expressed in M.
+        disp_net_num_params = count_parameters(disp_net) / 1e6
+
+        # Pose network parameters in M.
+        pose_net_num_params = count_parameters(pose_net) / 1e6
+
+        print('\n[ Count model parameters ]')
+        print('\t- DispResNet | N = {:0.2f}M params'.format(disp_net_num_params))
+        print('\t- PoseResNet | N = {:0.2f}M params'.format(pose_net_num_params))
+        print(' ')
+
+        # Adding the disparity network's parameter count to tensorboard.
+        val_writer.add_text(
+            tag='Parameter_count/disp_resnet',
+            text_string='{:0.2f}M'.format(disp_net_num_params),
+            global_step=0
+        )
+
+        # Adding the pose network's parameter count to tensorboard.
+        val_writer.add_text(
+            tag='Parameter_count/pose_resnet',
+            text_string='{:0.2f}M'.format(pose_net_num_params),
+            global_step=0
+        )
+
+        val_writer.flush()
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Wrapping the models with torch.nn.DataParallel...
+        # --------------------------------------------------------------------------------------------------------------
+
+        disp_net = torch.nn.DataParallel(disp_net, output_device=0)
+        pose_net = torch.nn.DataParallel(pose_net, output_device=0)
+
+        disp_net = disp_net.to(device)
+        pose_net = pose_net.to(device)
+
+        print('\n[ Data parallelism (with torch.nn.DataParallel) ]')
+        print('\t- [ Disparity network ] Device IDs = {} | Output device = {}'.format(
+                disp_net.device_ids,
+                disp_net.output_device
+            )
+        )
+        print('\t- [ Pose network ] Device IDs = {} | Output device = {}'.format(
+                pose_net.device_ids,
+                pose_net.output_device
+            )
+        )
+
+        # --------------------------------------------------------------------------------------------------------------
+        # CSV file to store video data, validation losses, camera translation and orientation (between two frames),
+        # telemetry data:
+        # --------------------------------------------------------------------------------------------------------------
+
+        # CSV file.
+        csv_log_full_ffname = '{}/{}'.format(save_path, cfgs["experiment_settings"]["log_full"])
+
+        # CSV header: 23 variables.
+        csv_log_full_header_list = [
+            # Index, test drive id, camera view, and video clip indices.
+            'index',
+            'test_drive_id',
+            'camera_view',
+            'video_clip_indices',
+            # Losses.
+            'total_loss',
+            'photometric_loss',
+            'smoothness_loss',
+            'geometry_consistency_loss',
+            # Camera pose: Target frame w.r.t. reference frame 0.
+            'x0',
+            'y0',
+            'z0',
+            'theta_x0',
+            'theta_y0',
+            'theta_z0',
+            # Camera pose: Target frame w.r.t. reference frame 1.
+            'x1',
+            'y1',
+            'z1',
+            'theta_x1',
+            'theta_y1',
+            'theta_z1',
+            # Telemetry data: latitude, longitude, and speed data (Km/h)
+            'latitude',
+            'longitude',
+            'speed_kmph'
+        ]
+
+        print(f'\n[ Creating a CSV file to save data per iteration (e.g., validation losses and odometry). ]')
+        print(f'\t- CSV File: {csv_log_full_ffname}')
+        print(f'\t- CSV Header: ')
+        for h in csv_log_full_header_list:
+            print(f"\t\t- {h}")
+
+        with open(csv_log_full_ffname, 'w') as csvfile:
+            writer = csv.writer(csvfile, delimiter='\t')
+            writer.writerow(csv_log_full_header_list)
+
+        ################################################################################################################
+        #
+        # Model inference and validation...
+        #
+        ################################################################################################################
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Creating a Logger.
+        # --------------------------------------------------------------------------------------------------------------
+
+        total_videos = val_dataset.get_num_videos
+
+        print('\n[ Start model inference and validation ] Total videos = {}'.format(total_videos))
+        print('')
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Evaluate the model, on the validation set, for N = max_val_iterations iterations.
+        # --------------------------------------------------------------------------------------------------------------
+
+        errors, error_names = \
+            validate_without_gt(
+                cfgs=cfgs,
+                val_loader=val_loader,
+                disp_net=disp_net,
+                pose_net=pose_net,
+                writer_obj=val_writer,
+                writer_obj_tag="Val",
+                save_path=save_path,
+                return_telemetry=cfgs["val"]["configuration"]["return"]["telemetry"],
+                device=device,
+                verbose=True,
+            )
+
+        # Validation loss.
+        error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
+        print('[ Average validation loss ] {}'.format(error_string))
+        print(' ')
+
+        # Write validation losses in tensorboard.
+        for error, name in zip(errors, error_names):
+            val_writer.add_scalar(tag=name, scalar_value=error, global_step=0)
+
+        # Flushes the event file to disk.
+        val_writer.flush()
+
+        # Closing operations...
+        val_writer.close()
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Finish the wandb run to upload the TensorBoard logs to W & B.
+        # --------------------------------------------------------------------------------------------------------------
+
+        if cfgs["experiment_settings"]["wandb_enable"]:
+            wandb.finish()
 
 
 @torch.no_grad()
