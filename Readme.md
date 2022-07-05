@@ -2,11 +2,13 @@
 
 #### Depth estimation technique
 
-The monocular depth estimation technique described in [1,2] was adapted to the Yaak dataset.
+The monocular self-supervised depth estimation technique described in [1,2] was adapted to the Yaak dataset.
+To estimate the metric scale (e.g., in meters), a speed-based regulariser was added in the loss function (during training) as suggested in [3] (currently, work in progress). 
 
 References:
 1. Bian, Jiawang, Zhichao Li, Naiyan Wang, Huangying Zhan, Chunhua Shen, Ming-Ming Cheng, and Ian Reid. "Unsupervised scale-consistent depth and ego-motion learning from monocular video." Advances in neural information processing systems 32 (2019).
 2. Bian, Jia-Wang, Huangying Zhan, Naiyan Wang, Zhichao Li, Le Zhang, Chunhua Shen, Ming-Ming Cheng, and Ian Reid. "Unsupervised scale-consistent depth learning from video." International Journal of Computer Vision 129, no. 9 (2021): 2548-2564.
+3. Guizilini, Vitor, Rares Ambrus, Sudeep Pillai, Allan Raventos, and Adrien Gaidon. "3d packing for self-supervised monocular depth estimation." In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 2485-2494. 2020.
 
 #### Dependencies
 
@@ -61,171 +63,48 @@ Data samples were recorded at different frequencies (depending on the source of 
 - The video sequences filenames with the suffix `-force-key.defish` correspond to undistorted video sequences, with corrected key frames. Such data is used to train the current models.
 - Speed data is loaded from the `metadata.json` file. This data is used for removing static scenes from the video sequences (currently, work in progress).
 
-#### Train the model
+#### Model training and validation
 
-Before training the model, adjust model hyper-parameters and other options in the bash file `train_resnet50_depth.sh`.
-Also, you must specify where the dataset is located and where the experimental results will be stored in this script.
-Afterwards, you can run the bash script as `bash scripts/train_resnet50_depth.sh`.
-
-The contents of the bash file are shown below:
+To train and validate the model, specify all the paths (e.g., dataset path, output path, etc.) and model hyper-parameters in `configs/config_training.toml`.
+Afterwards, execute the python script `train_model.py` as shown below:
 
 ```
-    # ------------------------------------------------------------------------------------------------------------------
-    # Data paths...
-    # ------------------------------------------------------------------------------------------------------------------
+    # Use this line to avoid any EOF decord issues.
+    export DECORD_EOF_RETRY_MAX=200000480
     
-    # Path where dataset is stored. It must be defined by the user.
-    # Default dataset location: "/nas/drives/yaak/yaak_dataset".
-    DATA_ROOT="/nas/drives/yaak/yaak_dataset"
-    
-    # Path where experimental results will be stored. It must be defined by the user.
-    EXP_RESULTS_ROOT="/some_path/my_experiments"
-    
-    # Create the experimental results path.
-    mkdir -p "$EXP_RESULTS_ROOT"
-    
-    # Path where video sequences are stored.
-    VIDEO_DATASET_PATH="$DATA_ROOT/video_data"
-    
-    # Path where the camera calibration data is stored (e.g., camera intrinsics).
-    CAMERA_CALIB_PATH="$DATA_ROOT/camera_calibration"
-    
-    # ------------------------------------------------------------------------------------------------------------------
-    # Hyper-parameters.
-    # ------------------------------------------------------------------------------------------------------------------
-    
-    # Common training hyper-parameters.
-    EPOCHS=25
-    MAX_TRAIN_ITERATIONS=20
-    MAX_VAL_ITERATIONS=5
-    BATCH_SIZE=5
-    LR=1e-4
-    MOMENTUM=0.9
-    BETA=0.999
-    WEIGHT_DECAY=0
-    
-    # Weight losses...
-    PHOTO_LOSS_WEIGHT=1.0
-    SMOOTH_LOSS_WEIGHT=0.1
-    GEOM_CONSISTENCY_LOSS_WEIGHT=0.5
-    
-    # Video clip step (i.e., number of frames to skip between consecutive frames).
-    VIDEO_CLIP_STEP=15
-    
-    # Frame scaling factor use: 0.25, 0.5, 0.75 or 1.0.
-    FRAME_SCALING_FACTOR=0.25
-    
-    # Number of scales.
-    NUM_SCALES=1
-    
-    # Rotation matrix representation.
-    ROTATION_MATRIX_MODE="euler"
-    
-    # Padding mode.
-    PADDING_MODE="zeros"
-    
-    # Print results frequency...
-    PRINT_FREQ=25
-    
-    # ------------------------------------------------------------------------------------------------------------------
-    # Camera views used for model training/validation.
-    # ------------------------------------------------------------------------------------------------------------------
-    
-    # Camera view used as part of the training set.
-    CAMERA_VIEW_TRAIN="cam_front_center"
-    
-    # Camera view as part of the validation set.
-    CAMERA_VIEW_VAL="cam_front_center"
-    
-    # ------------------------------------------------------------------------------------------------------------------
-    # Test drive IDs used for model training/validation.
-    #
-    #
-    # Test drive ID             Is the video OK?
-    #
-    # 2021-08-13--09-27-11      OK
-    # 2021-09-10--13-58-21      The car is not moving most of the time.
-    # 2021-10-13--06-30-56      OK
-    # 2021-11-15--15-13-02      Although the car is moving most of the time, half of the scenes are very dark.
-    # 2022-01-25--14-54-13      OK
-    # 2022-01-28--13-15-40      OK
-    # 2022-03-28--09-40-59      Remove - Reason: Metadata is corrupted.
-    #
-    # ------------------------------------------------------------------------------------------------------------------
-    
-    # Test drive ID used as training set.
-    TEST_DRIVE_ID_TRAIN="2021-08-13--09-27-11"
-    
-    # Test drive ID used as validation set.
-    TEST_DRIVE_ID_VAL="2021-08-13--09-27-11"
-    
-    # ------------------------------------------------------------------------------------------------------------------
-    # Experiments name, checkpoints path...
-    # ------------------------------------------------------------------------------------------------------------------
-    
-    # Experiment number.
-    EXP_NUMBER=0
-    
-    # Experiment name.
-    EXPERIMENT_NAME="exp""$EXP_NUMBER""_epochs_""$EPOCHS""_numScales_$NUM_SCALES""_frameScaleFactor_""$FRAME_SCALING_FACTOR"
-    EXPERIMENT_NAME+="_videoClipStep_""$VIDEO_CLIP_STEP""_batchSize_""$BATCH_SIZE""_rotMatrix_""$ROTATION_MATRIX_MODE""_pad_""$PADDING_MODE"
-    
-    # Checkpoints path.
-    CHECKPOINTS_PATH="$EXP_RESULTS_ROOT/checkpoints"
-    
-    echo "[ Train the depth estimation model (resnet50_depth_256) on the Yaak dataset ]"
-    echo "- [ Model validation ] No ground-truth used for model validation (only losses)."
-    echo "- [ Video dataset ] Path: $VIDEO_DATASET_PATH"
-    echo "- [ Camera calibration dataset ] Path: $CAMERA_CALIB_PATH"
-    echo "- [ Checkpoints ] Path: $CHECKPOINTS_PATH"
-    echo "- [ Camera view(s) | Model training ] $CAMERA_VIEW_TRAIN"
-    echo "- [ Camera view(s) | Model validation ] $CAMERA_VIEW_VAL"
-    echo "- [ Test drive ID(s) | Model training ] $TEST_DRIVE_ID_TRAIN"
-    echo "- [ Test drive ID(s) | Model validation ] $TEST_DRIVE_ID_VAL"
-    echo " "
-    
-    # ------------------------------------------------------------------------------------------------------------------
-    # Train the network on the Yaak dataset.
-    # ------------------------------------------------------------------------------------------------------------------
-    
-    # Set the variable CUDA_VISIBLE_DEVICES to any GPU device (default is 0).
-    CUDA_VISIBLE_DEVICES=0 \
-    python train_model.py \
-    --dataset-path "$VIDEO_DATASET_PATH" \
-    --cam-calib-path "$CAMERA_CALIB_PATH" \
-    --dataset-name 'yaak' \
-    --camera-view-train "$CAMERA_VIEW_TRAIN" \
-    --camera-view-val "$CAMERA_VIEW_VAL" \
-    --test-drive-id-train "$TEST_DRIVE_ID_TRAIN" \
-    --test-drive-id-val "$TEST_DRIVE_ID_VAL" \
-    --checkpoints-path "$CHECKPOINTS_PATH" \
-    --frame-scaling-factor $FRAME_SCALING_FACTOR \
-    --workers 0 \
-    --resnet-layers 50 \
-    --num-scales $NUM_SCALES \
-    --lr $LR --momentum $MOMENTUM --beta $BETA --weight-decay $WEIGHT_DECAY \
-    --batch-size $BATCH_SIZE \
-    --photo-loss-weight $PHOTO_LOSS_WEIGHT \
-    --smooth-loss-weight $SMOOTH_LOSS_WEIGHT \
-    --geometry-consistency-loss-weight $GEOM_CONSISTENCY_LOSS_WEIGHT \
-    --video-clip-length 3 \
-    --video-clip-step $VIDEO_CLIP_STEP \
-    --epochs $EPOCHS \
-    --max-train-iterations $MAX_TRAIN_ITERATIONS \
-    --max-val-iterations $MAX_VAL_ITERATIONS \
-    --rotation-matrix-mode "$ROTATION_MATRIX_MODE" \
-    --padding-mode "$PADDING_MODE" \
-    --with-ssim 1 \
-    --with-mask 1 \
-    --with-auto-mask 1 \
-    --with-pretrain 1 \
-    --log-output \
-    --print-freq $PRINT_FREQ \
-    --name "$EXPERIMENT_NAME"
+    # Then execute the Python script.
+    CUDA_VISIBLE_DEVICES=0 python train_model.py \
+    --config configs/config_training.toml \
+    --batch-size 1 \
+    --epochs 250 \
+    --max-train-iterations 1250 \
+    --max-val-iterations 125 \
+    --gpu
 
 ```
 
-#### Possible issues during training.
+#### Model inference
+
+To carry out model inference, specify all the paths (e.g., dataset path, output path, etc.) and model hyper-parameters in `configs/config_inference.toml`.
+Afterwards, execute the Python script `run_inference.py` as shown below:
+
+```
+
+    # Use this line to avoid any EOF decord issues.
+    export DECORD_EOF_RETRY_MAX=200000480
+    
+    # Then execute the Python script.
+    CUDA_VISIBLE_DEVICES=0 python run_inference.py \
+    --config configs/config_inference.toml \
+    --batch-size 1 \
+    --max-val-iterations -1 \
+    --gpu
+
+```
+
+Passing the value `-1` to `max-val-iterations` will perform inference on the whole video.
+
+#### Possible issues during training
 
 If an EOF error related to the `Decord` library (which is used to load video sequences directly into the GPU) occur, you may need to increase the value of the environment variable 
 `DECORD_EOF_RETRY_MAX`. For instance: `export DECORD_EOF_RETRY_MAX=200000480`. For more information about the issue, see the link below:
