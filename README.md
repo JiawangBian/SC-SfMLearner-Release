@@ -1,9 +1,9 @@
 # SC-Depth
 
-- ![#f03c15](https://via.placeholder.com/15/f03c15/000000?text=+) **See our new implementation in https://github.com/JiawangBian/sc_depth_pl**
+**Find the new implementation of SC-Depth (V1, V2, and V3) at https://github.com/JiawangBian/sc_depth_pl**
 
 
-This codebase implements the system described in the paper:
+This codebase implements the SC-DepthV1 described in the paper:
 
  >Unsupervised Scale-consistent Depth Learning from Video
  >
