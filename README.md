@@ -1,7 +1,6 @@
 # SC-Depth
 
-**Find the new implementation of SC-Depth (V1, V2, and V3) at https://github.com/JiawangBian/sc_depth_pl**
-
+## Pleaser refer to our new implementation of SC-Depth (V1, V2, and V3) at https://github.com/JiawangBian/sc_depth_pl
 
 This codebase implements the SC-DepthV1 described in the paper:
 
